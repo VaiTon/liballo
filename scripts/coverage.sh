@@ -22,7 +22,10 @@ CC=clang \
     -Dbuildtype=debug
 
 echo "[*] Building target with coverage instrumentation..."
-ninja -C "${BUILD_DIR}" tests/fuzz_allocator
+ninja -C "${BUILD_DIR}"
+
+echo "[*] Running unit tests..."
+meson test -C "${BUILD_DIR}"
 
 echo "[*] Running fuzzer corpus through instrumented binary..."
 count=0
