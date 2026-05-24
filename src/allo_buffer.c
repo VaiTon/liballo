@@ -1,6 +1,8 @@
 #include "allo.h"
 #include "asan.h"
 #include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
   void *buffer;
@@ -17,11 +19,13 @@ void *buf_alloc_fn(allo_t *self, size_t size) {
   }
   allocator_buf_context_t *ctx = (allocator_buf_context_t *)self->_state;
 
-  size_t aligned_offset = (ctx->offset + 7) & ~7;
+  assert(ctx->offset <= ctx->size && "Offset should never exceed buffer size");
 
-  if (aligned_offset + size > ctx->size) {
-    return NULL; // Not enough space
+  size_t aligned_offset = ALLO_ALIGN_UP(ctx->offset, 8);
+  if (aligned_offset > ctx->size || size > ctx->size - aligned_offset) {
+    return NULL;
   }
+
   void *ptr = (char *)ctx->buffer + aligned_offset;
   ctx->offset = aligned_offset + size;
   ALLOC_UNPOISON(ptr, size);
@@ -32,10 +36,16 @@ void *buf_realloc_fn(allo_t *self, void *ptr, size_t old_size,
                      size_t new_size) {
   allocator_buf_context_t *ctx = (allocator_buf_context_t *)self->_state;
 
-  // Check if this was the last allocation
-  if ((char *)ptr + old_size == (char *)ctx->buffer + ctx->offset) {
+  // Optimization: if the pointer is the most recent allocation and there's
+  // enough space to grow, just adjust the offset.
+  bool is_last_alloc =
+      (char *)ptr + old_size == (char *)ctx->buffer + ctx->offset;
+
+  if (is_last_alloc) {
     size_t base_offset = (size_t)((char *)ptr - (char *)ctx->buffer);
-    if (base_offset + new_size <= ctx->size) {
+    bool fits_in_current = base_offset + new_size <= ctx->size;
+
+    if (fits_in_current) {
       ctx->offset = base_offset + new_size;
       if (new_size > old_size) {
         ALLOC_UNPOISON((char *)ptr + old_size, new_size - old_size);
@@ -70,18 +80,25 @@ void buf_destroy_fn(allo_t *self) {
 }
 
 // Factory to create a buffer allocator
-allo_t make_fixed_buf_allocator(void *buffer, size_t size) {
-  allo_t a = {._alloc = buf_alloc_fn,
-              ._realloc = buf_realloc_fn,
-              ._free_mem = buf_free_fn,
-              ._destroy = buf_destroy_fn};
+allo_error_t make_fixed_buf_allocator(allo_t *out, void *buffer, size_t size) {
+  if (!out || !buffer || size == 0)
+    return ALLO_ERR_INVAL;
 
-  allocator_buf_context_t *ctx = (allocator_buf_context_t *)a._state;
+  /* Buffer must be 8-byte aligned for allocator alignment guarantees */
+  if (!ALLO_IS_ALIGNED(buffer, 8))
+    return ALLO_ERR_INVAL;
+
+  *out = (allo_t){._alloc = buf_alloc_fn,
+                  ._realloc = buf_realloc_fn,
+                  ._free_mem = buf_free_fn,
+                  ._destroy = buf_destroy_fn};
+
+  allocator_buf_context_t *ctx = (allocator_buf_context_t *)out->_state;
   ctx->buffer = buffer;
   ctx->size = size;
   ctx->offset = 0;
 
   ALLOC_POISON(buffer, size);
 
-  return a;
+  return ALLO_OK;
 }

@@ -4,8 +4,10 @@
 #include <string.h>
 
 void test_pool_allocator(void) {
-  allo_t child = make_c_allocator();
-  allo_t a = make_pool_allocator(&child, NULL, 64, 10);
+  allo_t child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+  allo_t a;
+  assert(make_pool_allocator(&a, &child, NULL, 64, 10) == ALLO_OK);
   void *p1 = allo_alloc(&a, 64);
   assert(p1 != NULL);
 
@@ -23,8 +25,10 @@ void test_pool_allocator(void) {
 
 void test_pool_exhaustive(void) {
   size_t count = 10;
-  allo_t child = make_c_allocator();
-  allo_t a = make_pool_allocator(&child, NULL, 64, count);
+  allo_t child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+  allo_t a;
+  assert(make_pool_allocator(&a, &child, NULL, 64, count) == ALLO_OK);
   void *pointers[10];
 
   for (size_t i = 0; i < count; ++i) {

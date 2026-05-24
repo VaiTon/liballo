@@ -1,6 +1,8 @@
 #include "allo.h"
 #include "asan.h"
+
 #include <assert.h>
+#include <stdbool.h>
 
 typedef struct arena_block {
   struct arena_block *next;
@@ -35,7 +37,7 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
   }
   arena_context_t *ctx = (arena_context_t *)self->_state;
 
-  size_t aligned_offset = (ctx->current->offset + 7) & ~7;
+  size_t aligned_offset = ALLO_ALIGN_UP(ctx->current->offset, 8);
 
   if (size > ctx->block_size) {
     // Large allocation, create a dedicated block
@@ -71,33 +73,41 @@ void *arena_realloc_fn(allo_t *self, void *ptr, size_t old_size,
                        size_t new_size) {
   arena_context_t *ctx = (arena_context_t *)self->_state;
 
-  // Check if it's the last allocation in the current block
-  void *current_block_data = (char *)ctx->current + sizeof(arena_block_t);
-  if ((char *)ptr >= (char *)current_block_data &&
-      (char *)ptr < (char *)current_block_data + ctx->current->size) {
-    if ((char *)ptr + old_size ==
-        (char *)current_block_data + ctx->current->offset) {
-      size_t base_offset = (size_t)((char *)ptr - (char *)current_block_data);
-      if (base_offset + new_size <= ctx->current->size) {
-        ctx->current->offset = base_offset + new_size;
-        if (new_size > old_size) {
-          ALLOC_UNPOISON((char *)ptr + old_size, new_size - old_size);
-        } else {
-          ALLOC_POISON((char *)ptr + new_size, old_size - new_size);
-        }
-        return ptr;
+  // We can grow/shrink in-place only if:
+  // 1. The pointer points to the very last allocation made in this block
+  void *block_start = (char *)ctx->current + sizeof(arena_block_t);
+  void *last_alloc_end = (char *)block_start + ctx->current->offset;
+  bool is_last_alloc = (char *)ptr + old_size == last_alloc_end;
+
+  // 2. The pointer actually belongs to the current block
+  bool belongs_to_current = (char *)ptr >= (char *)block_start;
+
+  if (is_last_alloc && belongs_to_current) {
+    size_t offset_without_this = (size_t)((char *)ptr - (char *)block_start);
+
+    // 3. The new size still fits within the bounds of the current block.
+    bool fits_in_current = offset_without_this + new_size <= ctx->current->size;
+
+    if (fits_in_current) {
+      // Update the offset to reflect the new size.
+      ctx->current->offset = offset_without_this + new_size;
+      if (new_size > old_size) {
+        ALLOC_UNPOISON((char *)ptr + old_size, new_size - old_size);
+      } else {
+        ALLOC_POISON((char *)ptr + new_size, old_size - new_size);
       }
+      return ptr;
     }
   }
 
-  // Fallback: if shrinking, just return (we can't reclaim anyway).
-  // If growing, allocate new and copy.
+  // Arenas don't reclaim space
   if (new_size <= old_size) {
     return ptr;
   }
 
+  // Allocate new memory and "leak" the old one
   void *new_ptr = arena_alloc_fn(self, new_size);
-  if (!new_ptr) {
+  if (new_ptr == NULL) {
     return NULL;
   }
 
@@ -122,20 +132,24 @@ void arena_destroy_fn(allo_t *self) {
   }
 }
 
-allo_t make_arena_allocator(allo_t *child, size_t block_size) {
-  allo_t a = {._alloc = arena_alloc_fn,
-              ._realloc = arena_realloc_fn,
-              ._free_mem = arena_free_fn,
-              ._destroy = arena_destroy_fn};
+allo_error_t make_arena_allocator(allo_t *out, allo_t *child,
+                                  size_t block_size) {
+  if (!out || !child || block_size == 0)
+    return ALLO_ERR_INVAL;
 
-  arena_context_t *ctx = (arena_context_t *)a._state;
+  *out = (allo_t){._alloc = arena_alloc_fn,
+                  ._realloc = arena_realloc_fn,
+                  ._free_mem = arena_free_fn,
+                  ._destroy = arena_destroy_fn};
+
+  arena_context_t *ctx = (arena_context_t *)out->_state;
   ctx->child = child;
   ctx->block_size = block_size;
   ctx->first = new_arena_block(ctx->child, block_size);
   if (!ctx->first) {
-    return (allo_t){0};
+    return ALLO_ERR_NOMEM;
   }
   ctx->current = ctx->first;
 
-  return a;
+  return ALLO_OK;
 }

@@ -4,8 +4,10 @@
 #include <string.h>
 
 void test_arena_allocator(void) {
-  allo_t child = make_c_allocator();
-  allo_t a = make_arena_allocator(&child, 1024);
+  allo_t child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+  allo_t a;
+  assert(make_arena_allocator(&a, &child, 1024) == ALLO_OK);
   void *p1 = allo_alloc(&a, 100);
   assert(p1 != NULL);
 
@@ -20,8 +22,10 @@ void test_arena_allocator(void) {
 }
 
 void test_arena_stress(void) {
-  allo_t child = make_c_allocator();
-  allo_t a = make_arena_allocator(&child, 1024);
+  allo_t child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+  allo_t a;
+  assert(make_arena_allocator(&a, &child, 1024) == ALLO_OK);
   void *pointers[5000];
   for (int i = 0; i < 5000; ++i) {
     pointers[i] = allo_alloc(&a, 16);

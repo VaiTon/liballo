@@ -23,10 +23,12 @@ void c_free_fn(allo_t *self, void *ptr) {
 }
 
 // Factory to create a standard C allocator
-allo_t make_c_allocator(void) {
-  allo_t a = {._alloc = c_alloc_fn,
-              ._realloc = c_realloc_fn,
-              ._free_mem = c_free_fn,
-              ._destroy = NULL};
-  return a;
+allo_error_t make_c_allocator(allo_t *out) {
+  if (!out)
+    return ALLO_ERR_INVAL;
+  *out = (allo_t){._alloc = c_alloc_fn,
+                  ._realloc = c_realloc_fn,
+                  ._free_mem = c_free_fn,
+                  ._destroy = NULL};
+  return ALLO_OK;
 }

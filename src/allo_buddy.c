@@ -166,21 +166,32 @@ void *buddy_realloc_fn(allo_t *self, void *ptr, size_t old_size,
 
 void buddy_destroy_fn(allo_t *self) {
   buddy_context_t *ctx = (buddy_context_t *)self->_state;
-  if (ctx->own_buffer) {
+  if (ctx->own_buffer && ctx->buffer) {
     allo_free(ctx->child, ctx->buffer);
   }
-  free(ctx->free_lists);
-  free(ctx->bitset);
-  free(ctx->block_orders);
+  if (ctx->free_lists) {
+    allo_free(ctx->child, ctx->free_lists);
+  }
+  if (ctx->bitset) {
+    allo_free(ctx->child, ctx->bitset);
+  }
+  if (ctx->block_orders) {
+    allo_free(ctx->child, ctx->block_orders);
+  }
 }
 
-allo_t make_buddy_allocator(allo_t *child, void *buffer, size_t size) {
-  allo_t a = {._alloc = buddy_alloc_fn,
-              ._realloc = buddy_realloc_fn,
-              ._free_mem = buddy_free_fn,
-              ._destroy = buddy_destroy_fn};
+allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
+                                  size_t size) {
+  if (!out || !child || size == 0) {
+    return ALLO_ERR_INVAL;
+  }
 
-  buddy_context_t *ctx = (buddy_context_t *)a._state;
+  *out = (allo_t){._alloc = buddy_alloc_fn,
+                  ._realloc = buddy_realloc_fn,
+                  ._free_mem = buddy_free_fn,
+                  ._destroy = buddy_destroy_fn};
+
+  buddy_context_t *ctx = (buddy_context_t *)out->_state;
   ctx->child = child;
 
   size_t actual_size = 1;
@@ -193,16 +204,43 @@ allo_t make_buddy_allocator(allo_t *child, void *buffer, size_t size) {
 
   if (ctx->own_buffer) {
     ctx->buffer = allo_alloc(ctx->child, ctx->total_size);
+    if (!ctx->buffer)
+      return ALLO_ERR_NOMEM;
   } else {
     ctx->buffer = buffer;
   }
 
   int num_levels = ctx->max_order - get_order(ctx->min_block_size) + 1;
-  ctx->free_lists = calloc(num_levels + 1, sizeof(buddy_node_t *));
+  size_t free_lists_count = (size_t)num_levels + 1;
+
+  ctx->free_lists = (buddy_node_t **)allo_calloc(ctx->child, free_lists_count,
+                                                 sizeof(buddy_node_t *));
+  if (!ctx->free_lists) {
+    if (ctx->own_buffer)
+      allo_free(ctx->child, ctx->buffer);
+    return ALLO_ERR_NOMEM;
+  }
 
   size_t max_nodes = (ctx->total_size / ctx->min_block_size) * 2;
-  ctx->bitset = calloc((max_nodes + 7) / 8, 1);
-  ctx->block_orders = calloc(ctx->total_size / ctx->min_block_size, 1);
+  size_t bit_bytes = (max_nodes + 7) / 8;
+  size_t block_orders_len = ctx->total_size / ctx->min_block_size;
+
+  ctx->bitset = (uint8_t *)allo_calloc(ctx->child, bit_bytes, 1);
+  if (!ctx->bitset) {
+    allo_free(ctx->child, ctx->free_lists);
+    if (ctx->own_buffer)
+      allo_free(ctx->child, ctx->buffer);
+    return ALLO_ERR_NOMEM;
+  }
+
+  ctx->block_orders = (uint8_t *)allo_calloc(ctx->child, block_orders_len, 1);
+  if (!ctx->block_orders) {
+    allo_free(ctx->child, ctx->bitset);
+    allo_free(ctx->child, ctx->free_lists);
+    if (ctx->own_buffer)
+      allo_free(ctx->child, ctx->buffer);
+    return ALLO_ERR_NOMEM;
+  }
 
   ctx->free_lists[0] = (buddy_node_t *)ctx->buffer;
   ctx->free_lists[0]->next = NULL;
@@ -210,5 +248,5 @@ allo_t make_buddy_allocator(allo_t *child, void *buffer, size_t size) {
 
   ALLOC_POISON(ctx->buffer, ctx->total_size);
 
-  return a;
+  return ALLO_OK;
 }

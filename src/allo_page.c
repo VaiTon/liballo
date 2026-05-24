@@ -74,14 +74,16 @@ void page_destroy_fn(allo_t *self) {
   (void)self;
 }
 
-allo_t make_page_allocator(void) {
-  allo_t a = {._alloc = page_alloc_fn,
-              ._realloc = page_realloc_fn,
-              ._free_mem = page_free_fn,
-              ._destroy = page_destroy_fn};
+allo_error_t make_page_allocator(allo_t *out) {
+  if (!out)
+    return ALLO_ERR_INVAL;
+  *out = (allo_t){._alloc = page_alloc_fn,
+                  ._realloc = page_realloc_fn,
+                  ._free_mem = page_free_fn,
+                  ._destroy = page_destroy_fn};
 
-  page_context_t *ctx = (page_context_t *)a._state;
+  page_context_t *ctx = (page_context_t *)out->_state;
   ctx->page_size = os_get_page_size();
 
-  return a;
+  return ALLO_OK;
 }

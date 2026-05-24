@@ -4,7 +4,8 @@
 #include <string.h>
 
 void test_c_allocator(void) {
-  allo_t a = make_c_allocator();
+  allo_t a;
+  assert(make_c_allocator(&a) == ALLO_OK);
   void *p1 = allo_alloc(&a, 100);
   assert(p1 != NULL);
   memset(p1, 0xAA, 100);

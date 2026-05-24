@@ -12,7 +12,10 @@ static inline void sys_exit(int status) {
 
 // Entry point for freestanding binary
 void _start(void) {
-  allo_t a = make_page_allocator();
+  allo_t a;
+  if (make_page_allocator(&a) != ALLO_OK) {
+    sys_exit(4);
+  }
 
   // Test allocation
   void *p1 = allo_alloc(&a, 100);

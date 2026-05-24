@@ -5,15 +5,14 @@
 #include <string.h>
 
 void test_buffer_allocator(void) {
-  char buffer[1024];
-  // Align buffer manually to be sure the starting point is aligned
-  void *aligned_buffer = (void *)(((uintptr_t)buffer + 7) & ~7);
-  allo_t a = make_fixed_buf_allocator(aligned_buffer, 1024);
+  ALLO_ALIGNED_BUF(buffer, 1024);
+  allo_t a;
+  assert(make_fixed_buf_allocator(&a, buffer, 1024) == ALLO_OK);
 
   void *p1 = allo_alloc(&a, 100);
   assert(p1 != NULL);
   // Metadata is in the struct now, not in the buffer
-  assert(p1 == aligned_buffer);
+  assert(p1 == buffer);
 
   void *p2 = allo_alloc(&a, 100);
   assert(p2 != NULL);

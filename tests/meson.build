@@ -7,6 +7,8 @@ test_cases = [
     'test_page',
     'test_realloc',
     'test_buddy',
+    'test_calloc',
+    'test_buffer_validation',
 ]
 
 # Standard tests
@@ -27,7 +29,7 @@ if cc.get_id() == 'clang'
     if not get_option('b_coverage')
         fuzz_args += ['-fsanitize=fuzzer', '-DFUZZING_DRIVER']
     endif
-    fuzz_exe = executable(
+    executable(
         'fuzz_allocator',
         'fuzz_allocator.c',
         include_directories: liballo_headers,

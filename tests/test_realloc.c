@@ -43,9 +43,9 @@ void test_realloc_common(allo_t *a, const char *name) {
 }
 
 void test_buffer_realloc_inplace(void) {
-  char buffer[1024];
-  void *aligned_buffer = (void *)(((uintptr_t)buffer + 7) & ~7);
-  allo_t a = make_fixed_buf_allocator(aligned_buffer, 1024);
+  ALLO_ALIGNED_BUF(buffer, 1024);
+  allo_t a;
+  assert(make_fixed_buf_allocator(&a, buffer, 1024) == ALLO_OK);
 
   void *p1 = allo_alloc(&a, 100);
   void *p2 = allo_realloc(&a, p1, 100, 200);
@@ -54,31 +54,37 @@ void test_buffer_realloc_inplace(void) {
   (void)allo_alloc(&a, 50); // Just to take space
   void *p4 = allo_realloc(&a, p2, 200, 300);
   assert(p4 != p2); // Should NOT be in-place (p3 is in the way)
-  
+
   allo_destroy(&a);
   printf("Buffer in-place realloc test passed\n");
 }
 
 int main(void) {
-  allo_t c = make_c_allocator();
+  allo_t c;
+  assert(make_c_allocator(&c) == ALLO_OK);
   test_realloc_common(&c, "C Allocator");
 
   char buf[2048];
-  allo_t b = make_fixed_buf_allocator(buf, 2048);
+  allo_t b;
+  assert(make_fixed_buf_allocator(&b, buf, 2048) == ALLO_OK);
   test_realloc_common(&b, "Fixed Buffer");
 
-  allo_t root = make_c_allocator();
-  allo_t arena = make_arena_allocator(&root, 1024);
+  allo_t root;
+  assert(make_c_allocator(&root) == ALLO_OK);
+  allo_t arena;
+  assert(make_arena_allocator(&arena, &root, 1024) == ALLO_OK);
   test_realloc_common(&arena, "Arena");
 
-  allo_t pool = make_pool_allocator(&root, NULL, 256, 10);
+  allo_t pool;
+  assert(make_pool_allocator(&pool, &root, NULL, 256, 10) == ALLO_OK);
   // Pool only supports realloc within block_size
   void *pp = allo_alloc(&pool, 100);
   void *pp2 = allo_realloc(&pool, pp, 100, 200);
   assert(pp == pp2);
   allo_destroy(&pool);
 
-  allo_t page = make_page_allocator();
+  allo_t page;
+  assert(make_page_allocator(&page) == ALLO_OK);
   test_realloc_common(&page, "Page Allocator");
 
   test_buffer_realloc_inplace();
