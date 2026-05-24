@@ -36,11 +36,20 @@ fi
 
 # Fallback/Additional structured seeds
 # (These ensure we always have a good starting point even without a full corpus)
-[ -f "${IN_DIR}/seed_c" ] || printf "\x00\x00\x00\x64\x04\x00\xC8\x02\x01\xF4\x05" > "${IN_DIR}/seed_c"
-...
-printf "\x04\x40\x00\x64\x00\x00\x40\x04\x00\x40\x01" > "${IN_DIR}/seed_pool"
 
-# Add Buddy Seed
+# 1. C Allocator Seed
+[ -f "${IN_DIR}/seed_c" ] || printf "\x00\x00\x00\x64\x04\x00\xC8\x02\x01\xF4\x05" > "${IN_DIR}/seed_c"
+
+# 2. Page Allocator Seed
+[ -f "${IN_DIR}/seed_page" ] || printf "\x01\x00\x10\x00\x04\x20\x00\x01" > "${IN_DIR}/seed_page"
+
+# 3. Arena Allocator Seed
+[ -f "${IN_DIR}/seed_arena" ] || printf "\x03\x10\x00\x00\x00\x64\x04\x0F\xA0" > "${IN_DIR}/seed_arena"
+
+# 4. Pool Allocator Seed
+[ -f "${IN_DIR}/seed_pool" ] || printf "\x04\x40\x00\x64\x00\x00\x40\x04\x00\x40\x01" > "${IN_DIR}/seed_pool"
+
+# 5. Buddy Allocator Seed
 [ -f "${IN_DIR}/seed_buddy" ] || printf "\x05\x00" > "${IN_DIR}/seed_buddy"
 
 echo "[+] Initialized corpus in ${IN_DIR}"
