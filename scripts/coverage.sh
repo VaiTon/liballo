@@ -17,7 +17,7 @@ fi
 
 echo "[*] Setting up coverage build directory: ${BUILD_DIR}"
 CC=clang \
-meson setup "${BUILD_DIR}" --wipe \
+    meson setup "${BUILD_DIR}" --wipe \
     -Db_coverage=true \
     -Dbuildtype=debug
 
@@ -28,14 +28,14 @@ echo "[*] Running fuzzer corpus through instrumented binary..."
 count=0
 for file in "${AFL_QUEUE}"/id*; do
     [ -e "$file" ] || continue
-    $FUZZ_TARGET "$file" > /dev/null 2>&1 || true
+    $FUZZ_TARGET "$file" >/dev/null 2>&1 || true
     count=$((count + 1))
 done
 
 echo "[+] Processed ${count} files from the corpus."
 
 echo "[*] Attempting to generate HTML coverage report..."
-if command -v gcovr &> /dev/null || (command -v lcov &> /dev/null && command -v genhtml &> /dev/null); then
+if command -v gcovr &>/dev/null || (command -v lcov &>/dev/null && command -v genhtml &>/dev/null); then
     ninja -C "${BUILD_DIR}" coverage-html
     echo ""
     echo "[+] SUCCESS! HTML report generated at:"
@@ -44,11 +44,9 @@ else
     echo "[!] Warning: gcovr or lcov/genhtml not found."
     echo "[*] Generating a text-based summary instead using llvm-cov..."
     echo ""
-    # Find the object file (meson names them differently)
-    OBJ_FILE=$(find "${BUILD_DIR}" -name "fuzz_allocator.p" -type d | head -n 1)
     # This is a bit complex for a generic script, but let's try a simple gcov summary
     cd "${BUILD_DIR}"
-    gcov -n tests/fuzz_allocator.p/*.o > /dev/null
+    gcov -n tests/fuzz_allocator.p/*.o >/dev/null
     echo "--- Coverage Summary (Text) ---"
     grep -r "File" . --include "*.gcov" -A 1 | sed 's/File //;s/Lines executed://'
     echo "-------------------------------"
