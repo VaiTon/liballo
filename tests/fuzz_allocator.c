@@ -2,10 +2,13 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "allo.h"
 
-#define MAX_POINTERS 16
-#define MAX_ALLOC_SIZE 8192
+// We need a reasonable upper bound to avoid enormous stack allocations in the harness,
+// but the *actual* limits used in each run will be determined by the input.
+#define ABSOLUTE_MAX_POINTERS 128
+#define ABSOLUTE_MAX_ALLOC 65536
 
 typedef enum {
     OP_ALLOC = 0,
@@ -17,19 +20,30 @@ typedef enum {
 typedef struct {
     void *ptr;
     size_t size;
+    uint8_t magic; // For data integrity verification
 } tracker_t;
 
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-    if (Size < 2) return 0;
+    // Need at least enough bytes for global config (selector + max_ptrs + max_alloc)
+    if (Size < 6) return 0;
+
+    // --- 1. Global Configuration via Input ---
+    uint8_t selector = Data[0] % 5;
+    
+    // Determine how many pointers we will track in this run (1 to ABSOLUTE_MAX_POINTERS)
+    size_t active_max_pointers = (Data[1] % ABSOLUTE_MAX_POINTERS) + 1;
+    
+    // Determine the maximum allocation size for this run (1 to ABSOLUTE_MAX_ALLOC)
+    size_t active_max_alloc = ((Data[2] << 8) | Data[3]) % ABSOLUTE_MAX_ALLOC + 1;
+    
+    size_t offset = 4;
 
     allo_t a;
     allo_t child;
     void *backing_buffer = NULL;
-    int is_complex = 0; // tracking if we need to destroy child/buffer
+    int is_complex = 0;
 
-    uint8_t selector = Data[0] % 5;
-    size_t offset = 1;
-
+    // --- 2. Allocator Instantiation via Input ---
     switch (selector) {
         case 0: // C Allocator
             a = make_c_allocator();
@@ -38,15 +52,21 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
             a = make_page_allocator();
             break;
         case 2: // Fixed Buffer Allocator
-            backing_buffer = malloc(MAX_ALLOC_SIZE * MAX_POINTERS);
-            a = make_fixed_buf_allocator(backing_buffer, MAX_ALLOC_SIZE * MAX_POINTERS);
+        {
+            if (offset + 2 > Size) return 0;
+            // Buffer size between 1 and active_max_alloc * active_max_pointers
+            size_t buf_size = ((Data[offset] << 8) | Data[offset+1]) % (active_max_alloc * active_max_pointers + 1) + 1;
+            offset += 2;
+            backing_buffer = malloc(buf_size);
+            a = make_fixed_buf_allocator(backing_buffer, buf_size);
             is_complex = 1;
             break;
+        }
         case 3: // Arena Allocator
         {
-            if (Size < 3) return 0;
-            // Random block size between 64 and 8191
-            size_t block_size = (((Data[offset] << 8) | Data[offset+1]) % 8128) + 64;
+            if (offset + 2 > Size) return 0;
+            // Block size between 1 and 65536
+            size_t block_size = ((Data[offset] << 8) | Data[offset+1]) + 1;
             offset += 2;
             child = make_c_allocator();
             a = make_arena_allocator(&child, block_size);
@@ -55,11 +75,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
         }
         case 4: // Pool Allocator
         {
-            if (Size < 4) return 0;
-            // Random block size between 1 and 256
-            size_t pool_block_size = (Data[offset++] % 256) + 1;
-            // Random total blocks between 1 and 1024
-            size_t total_blocks = (((Data[offset] << 8) | Data[offset+1]) % 1024) + 1;
+            if (offset + 4 > Size) return 0;
+            // Block size between 1 and 4096
+            size_t pool_block_size = ((Data[offset] << 8) | Data[offset+1]) % 4096 + 1;
+            offset += 2;
+            // Total blocks between 1 and 1024
+            size_t total_blocks = ((Data[offset] << 8) | Data[offset+1]) % 1024 + 1;
             offset += 2;
             child = make_c_allocator();
             a = make_pool_allocator(&child, NULL, pool_block_size, total_blocks);
@@ -70,51 +91,98 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
             return 0;
     }
 
-    tracker_t tracked[MAX_POINTERS];
+    // --- 3. State Setup ---
+    tracker_t tracked[ABSOLUTE_MAX_POINTERS];
     memset(tracked, 0, sizeof(tracked));
 
+    // --- 4. Operation Loop ---
     while (offset < Size) {
         uint8_t op_byte = Data[offset++];
         operation_t op = (op_byte & 0x03) % OP_COUNT;
-        uint8_t index = (op_byte >> 2) % MAX_POINTERS;
+        
+        // Target an index within our currently active max pointers
+        uint8_t index = (op_byte >> 2) % active_max_pointers;
 
         if (op == OP_ALLOC) {
             if (offset + 2 > Size) break;
-            size_t alloc_size = ((Data[offset] << 8) | Data[offset+1]) % MAX_ALLOC_SIZE;
+            size_t alloc_size = ((Data[offset] << 8) | Data[offset+1]) % active_max_alloc;
             offset += 2;
 
-            if (tracked[index].ptr) {
+            // Verify integrity before overwriting
+            if (tracked[index].ptr && tracked[index].size > 0) {
+                uint8_t *mem = (uint8_t *)tracked[index].ptr;
+                for (size_t i = 0; i < tracked[index].size; i++) {
+                    if (mem[i] != tracked[index].magic) {
+                        abort(); // Data corruption detected
+                    }
+                }
                 allo_free(&a, tracked[index].ptr);
             }
+            
             tracked[index].ptr = allo_alloc(&a, alloc_size);
             tracked[index].size = alloc_size;
+            tracked[index].magic = op_byte; // Use op_byte as unique magic for this allocation
+            
             if (tracked[index].ptr && alloc_size > 0) {
-                memset(tracked[index].ptr, 0xAA, alloc_size);
+                memset(tracked[index].ptr, tracked[index].magic, alloc_size);
             }
         } else if (op == OP_FREE) {
             if (tracked[index].ptr) {
+                // Verify integrity before freeing
+                if (tracked[index].size > 0) {
+                    uint8_t *mem = (uint8_t *)tracked[index].ptr;
+                    for (size_t i = 0; i < tracked[index].size; i++) {
+                        if (mem[i] != tracked[index].magic) {
+                            abort(); // Data corruption detected
+                        }
+                    }
+                }
                 allo_free(&a, tracked[index].ptr);
                 tracked[index].ptr = NULL;
                 tracked[index].size = 0;
             }
         } else if (op == OP_REALLOC) {
             if (offset + 2 > Size) break;
-            size_t new_size = ((Data[offset] << 8) | Data[offset+1]) % MAX_ALLOC_SIZE;
+            size_t new_size = ((Data[offset] << 8) | Data[offset+1]) % active_max_alloc;
             offset += 2;
 
+            // Verify integrity before reallocating
+            if (tracked[index].ptr && tracked[index].size > 0) {
+                uint8_t *mem = (uint8_t *)tracked[index].ptr;
+                for (size_t i = 0; i < tracked[index].size; i++) {
+                    if (mem[i] != tracked[index].magic) {
+                        abort(); // Data corruption detected
+                    }
+                }
+            }
+
             void *new_ptr = allo_realloc(&a, tracked[index].ptr, tracked[index].size, new_size);
+            
             if (new_ptr || new_size == 0) {
                 tracked[index].ptr = new_ptr;
                 tracked[index].size = new_size;
+                tracked[index].magic = op_byte; // Update magic for new state
+                
                 if (tracked[index].ptr && new_size > 0) {
-                    memset(tracked[index].ptr, 0xBB, new_size);
+                    // Re-fill the entire new block to ensure integrity moving forward
+                    memset(tracked[index].ptr, tracked[index].magic, new_size);
                 }
             }
         }
     }
 
-    for (int i = 0; i < MAX_POINTERS; i++) {
+    // --- 5. Teardown ---
+    for (int i = 0; i < (int)active_max_pointers; i++) {
         if (tracked[i].ptr) {
+            // Final integrity check before teardown
+            if (tracked[i].size > 0) {
+                uint8_t *mem = (uint8_t *)tracked[i].ptr;
+                for (size_t j = 0; j < tracked[i].size; j++) {
+                    if (mem[j] != tracked[i].magic) {
+                        abort();
+                    }
+                }
+            }
             allo_free(&a, tracked[i].ptr);
         }
     }
