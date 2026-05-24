@@ -43,16 +43,29 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
             is_complex = 1;
             break;
         case 3: // Arena Allocator
+        {
+            if (Size < 3) return 0;
+            // Random block size between 64 and 8191
+            size_t block_size = (((Data[offset] << 8) | Data[offset+1]) % 8128) + 64;
+            offset += 2;
             child = make_c_allocator();
-            a = make_arena_allocator(&child, 4096);
+            a = make_arena_allocator(&child, block_size);
             is_complex = 2;
             break;
+        }
         case 4: // Pool Allocator
+        {
+            if (Size < 4) return 0;
+            // Random block size between 1 and 256
+            size_t pool_block_size = (Data[offset++] % 256) + 1;
+            // Random total blocks between 1 and 1024
+            size_t total_blocks = (((Data[offset] << 8) | Data[offset+1]) % 1024) + 1;
+            offset += 2;
             child = make_c_allocator();
-            // Use 64-byte blocks for the pool fuzzer
-            a = make_pool_allocator(&child, NULL, 64, 1024);
+            a = make_pool_allocator(&child, NULL, pool_block_size, total_blocks);
             is_complex = 3;
             break;
+        }
         default:
             return 0;
     }
