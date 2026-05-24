@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include "allo.h"
 
@@ -19,13 +20,46 @@ typedef struct {
 } tracker_t;
 
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
-    if (Size < 1) return 0;
+    if (Size < 2) return 0;
 
-    allo_t a = make_c_allocator();
+    allo_t a;
+    allo_t child;
+    void *backing_buffer = NULL;
+    int is_complex = 0; // tracking if we need to destroy child/buffer
+
+    uint8_t selector = Data[0] % 5;
+    size_t offset = 1;
+
+    switch (selector) {
+        case 0: // C Allocator
+            a = make_c_allocator();
+            break;
+        case 1: // Page Allocator
+            a = make_page_allocator();
+            break;
+        case 2: // Fixed Buffer Allocator
+            backing_buffer = malloc(MAX_ALLOC_SIZE * MAX_POINTERS);
+            a = make_fixed_buf_allocator(backing_buffer, MAX_ALLOC_SIZE * MAX_POINTERS);
+            is_complex = 1;
+            break;
+        case 3: // Arena Allocator
+            child = make_c_allocator();
+            a = make_arena_allocator(&child, 4096);
+            is_complex = 2;
+            break;
+        case 4: // Pool Allocator
+            child = make_c_allocator();
+            // Use 64-byte blocks for the pool fuzzer
+            a = make_pool_allocator(&child, NULL, 64, 1024);
+            is_complex = 3;
+            break;
+        default:
+            return 0;
+    }
+
     tracker_t tracked[MAX_POINTERS];
     memset(tracked, 0, sizeof(tracked));
 
-    size_t offset = 0;
     while (offset < Size) {
         uint8_t op_byte = Data[offset++];
         operation_t op = (op_byte & 0x03) % OP_COUNT;
@@ -73,5 +107,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     }
 
     allo_destroy(&a);
+    if (is_complex == 1) {
+        free(backing_buffer);
+    } else if (is_complex >= 2) {
+        allo_destroy(&child);
+    }
+
     return 0;
 }
