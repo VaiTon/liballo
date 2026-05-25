@@ -59,7 +59,8 @@ allo_error_t make_page_allocator(allo_t *out);
  * reset or destroyed.
  *
  * `out` must be 8-byte aligned. Use the ALLO_ALIGNED_BUF macro to create a
- * suitable buffer.
+ * suitable buffer. Consider allocating on the heap with a page allocator if you
+ * need a large buffer, as stack space is often limited.
  */
 allo_error_t make_fixed_buf_allocator(allo_t *out, void *buffer, size_t size);
 

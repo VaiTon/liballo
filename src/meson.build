@@ -33,6 +33,7 @@ if can_do_nostdlib
         liballo_sources,
         include_directories: liballo_headers,
         c_args: ['-DALLO_FREESTANDING', '-ffreestanding'],
+        override_options: ['b_sanitize=none', 'b_coverage=false'],
         install: false, # internal use only
     )
 endif

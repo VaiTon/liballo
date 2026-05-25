@@ -185,8 +185,21 @@ void buddy_free_fn(allo_t *self, void *ptr, size_t size) {
   ALLOC_POISON(ptr, ctx->total_size >> level);
 
   while (level >= 0) {
+    // At the root level there is no parent to merge into; insert here and stop.
+    // This guard must come before buddy_idx is computed: at level 0 the only
+    // valid index is 0, so index ^ 1 == 1 is out-of-range for that level.
+    if (level == 0) {
+      set_bit(ctx->bitset, node_index(level, index));
+      buddy_node_t *node = (buddy_node_t *)((char *)ctx->buffer +
+                                            index * (ctx->total_size >> level));
+      ALLOC_UNPOISON(node, sizeof(buddy_node_t));
+      list_push(ctx, level, node);
+      break;
+    }
+
     size_t buddy_idx = index ^ 1;
-    if (level == 0 || get_bit(ctx->bitset, node_index(level, buddy_idx)) == 0) {
+    if (get_bit(ctx->bitset, node_index(level, buddy_idx)) == 0) {
+      // Buddy is allocated; insert this block into the free list and stop.
       set_bit(ctx->bitset, node_index(level, index));
       buddy_node_t *node = (buddy_node_t *)((char *)ctx->buffer +
                                             index * (ctx->total_size >> level));

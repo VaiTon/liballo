@@ -5,14 +5,13 @@
 void test_buddy_basic(void) {
   printf("Testing Buddy Allocator: Basic\n");
   allo_t c_alloc, buddy;
-  ALLO_ALIGNED_BUF(buffer, (1024 * 1024UL) + (128 * 1024UL));
+  static ALLO_ALIGNED_BUF(buffer, (1024 * 1024UL) + (128 * 1024UL));
   assert(make_fixed_buf_allocator(&c_alloc, buffer, sizeof(buffer)) == ALLO_OK);
   assert(make_buddy_allocator(&buddy, &c_alloc, NULL, 1024 * 1024UL) ==
          ALLO_OK);
 
-  void *p1 = allo_alloc(
-      &buddy,
-      100); // Should get 128 (min is 32, but we use 128 here or whatever)
+  // Should get 128 (min is 32, but we use 128 here or whatever)
+  void *p1 = allo_alloc(&buddy, 100);
   assert(p1 != NULL);
   memset(p1, 0xAA, 100);
 
@@ -43,7 +42,7 @@ void test_buddy_basic(void) {
 
 void test_buddy_alignment(void) {
   printf("Testing Buddy Allocator: Alignment\n");
-  ALLO_ALIGNED_BUF(buffer, (64 * 1024UL) + (16 * 1024UL));
+  static ALLO_ALIGNED_BUF(buffer, (64 * 1024UL) + (16 * 1024UL));
   allo_t fixed;
   assert(make_fixed_buf_allocator(&fixed, buffer, sizeof(buffer)) == ALLO_OK);
   allo_t buddy;
@@ -53,6 +52,7 @@ void test_buddy_alignment(void) {
     void *p = allo_alloc(&buddy, 1);
     assert(((uintptr_t)p % 8) == 0);
     allo_free(&buddy, p, 1);
+    if (i % 10 == 0) printf("alignment iter %d\n", i);
   }
 
   allo_destroy(&buddy);
@@ -62,7 +62,7 @@ void test_buddy_alignment(void) {
 
 void test_buddy_torture(void) {
   printf("Testing Buddy Allocator: Torture\n");
-  ALLO_ALIGNED_BUF(buffer, 256 * 1024UL);
+  static ALLO_ALIGNED_BUF(buffer, 256 * 1024UL);
   allo_t fixed, buddy;
   assert(make_fixed_buf_allocator(&fixed, buffer, sizeof(buffer)) == ALLO_OK);
   assert(make_buddy_allocator(&buddy, &fixed, NULL, 128 * 1024UL) == ALLO_OK);
@@ -109,7 +109,7 @@ void test_buddy_torture(void) {
 
 void test_buddy_validation(void) {
   printf("Testing Buddy Allocator: Validation\n");
-  ALLO_ALIGNED_BUF(buffer, 1024);
+  static ALLO_ALIGNED_BUF(buffer, 1024);
   allo_t child, a;
   assert(make_fixed_buf_allocator(&child, buffer, sizeof(buffer)) == ALLO_OK);
 

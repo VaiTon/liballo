@@ -32,27 +32,24 @@ void test_alignment(void) {
 
 void test_zero_alloc(void) {
   ALLO_ALIGNED_BUF(c_buf, 2048);
-  allo_t b;
-  assert(make_fixed_buf_allocator(&b, c_buf, 2048) == ALLO_OK);
-
-  allo_t a;
-  assert(make_arena_allocator(&a, &b, 1024) == ALLO_OK);
-  allo_t p;
-  assert(make_pool_allocator(&p, &b, NULL, 64, 10) == ALLO_OK);
+  allo_t buf_all, arena_all, pool_all;
+  assert(make_fixed_buf_allocator(&buf_all, c_buf, 2048) == ALLO_OK);
+  assert(make_arena_allocator(&arena_all, &buf_all, 1024) == ALLO_OK);
+  assert(make_pool_allocator(&pool_all, &buf_all, NULL, 64, 10) == ALLO_OK);
 
   // Behavior for 0 is now enforced to return NULL.
-  assert(allo_alloc(&b, 0) == NULL);
-  assert(allo_alloc(&a, 0) == NULL);
-  assert(allo_alloc(&p, 0) == NULL);
+  assert(allo_alloc(&buf_all, 0) == NULL);
+  assert(allo_alloc(&arena_all, 0) == NULL);
+  assert(allo_alloc(&pool_all, 0) == NULL);
 
   // free(NULL) should be a safe no-op.
-  allo_free(&b, NULL, 0);
-  allo_free(&a, NULL, 0);
-  allo_free(&p, NULL, 0);
+  allo_free(&buf_all, NULL, 0);
+  allo_free(&arena_all, NULL, 0);
+  allo_free(&pool_all, NULL, 0);
 
-  allo_destroy(&b);
-  allo_destroy(&a);
-  allo_destroy(&p);
+  allo_destroy(&pool_all);
+  allo_destroy(&arena_all);
+  allo_destroy(&buf_all);
   printf("Zero allocation test passed\n");
 }
 
