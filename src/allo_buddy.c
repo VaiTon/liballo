@@ -7,6 +7,7 @@
 
 typedef struct buddy_node {
   struct buddy_node *next;
+  struct buddy_node *prev;
 } buddy_node_t;
 
 typedef struct {
@@ -20,6 +21,28 @@ typedef struct {
   int own_buffer;
   allo_t *child;
 } buddy_context_t;
+
+static inline void list_push(buddy_context_t *ctx, int level,
+                             buddy_node_t *node) {
+  node->next = ctx->free_lists[level];
+  node->prev = NULL;
+  if (ctx->free_lists[level]) {
+    ctx->free_lists[level]->prev = node;
+  }
+  ctx->free_lists[level] = node;
+}
+
+static inline void list_remove(buddy_context_t *ctx, int level,
+                               buddy_node_t *node) {
+  if (node->prev) {
+    node->prev->next = node->next;
+  } else {
+    ctx->free_lists[level] = node->next;
+  }
+  if (node->next) {
+    node->next->prev = node->prev;
+  }
+}
 
 static_assert(sizeof(buddy_context_t) <= ALLO_MAX_ALLOCATOR_CTX_SIZE,
               "Buddy allocator context exceeds maximum size");
@@ -40,14 +63,30 @@ static inline int get_bit(uint8_t *bitset, size_t bit) {
   return (bitset[bit / 8] >> (bit % 8)) & 1;
 }
 
-static int get_order(size_t size) {
-  int order = 0;
-  size_t s = 1;
-  while (s < size) {
-    s <<= 1;
-    order++;
+static inline int get_order(size_t size) {
+  if (size <= 1)
+    return 0;
+#if defined(__GNUC__) || defined(__clang__)
+  if (sizeof(size_t) == sizeof(unsigned long long)) {
+    return (int)(64 - __builtin_clzll((unsigned long long)size - 1));
+  } else {
+    return (int)(32 - __builtin_clz((unsigned int)size - 1));
   }
+#else
+  // Portable branchless fallback for non-GCC/Clang
+  size_t val = size - 1;
+  int order = 0;
+  if (sizeof(size_t) == 8) {
+    if (val & 0xFFFFFFFF00000000ULL) { val >>= 32; order += 32; }
+  }
+  if (val & 0xFFFF0000U) { val >>= 16; order += 16; }
+  if (val & 0xFF00U) { val >>= 8; order += 8; }
+  if (val & 0xF0U) { val >>= 4; order += 4; }
+  if (val & 0xCU) { val >>= 2; order += 2; }
+  if (val & 0x2U) { val >>= 1; order += 1; }
+  if (val & 0x1U) { order += 1; }
   return order;
+#endif
 }
 
 void *buddy_alloc_fn(allo_t *self, size_t size) {
@@ -74,7 +113,7 @@ void *buddy_alloc_fn(allo_t *self, size_t size) {
 
   buddy_node_t *node = ctx->free_lists[level];
   ALLOC_UNPOISON(node, sizeof(buddy_node_t));
-  ctx->free_lists[level] = node->next;
+  list_remove(ctx, level, node);
 
   size_t index =
       ((char *)node - (char *)ctx->buffer) / (ctx->total_size >> level);
@@ -86,8 +125,7 @@ void *buddy_alloc_fn(allo_t *self, size_t size) {
     size_t buddy_size = ctx->total_size >> level;
     buddy_node_t *buddy = (buddy_node_t *)((char *)node + buddy_size);
     ALLOC_UNPOISON(buddy, sizeof(buddy_node_t));
-    buddy->next = ctx->free_lists[level];
-    ctx->free_lists[level] = buddy;
+    list_push(ctx, level, buddy);
     set_bit(ctx->bitset, node_index(level, index + 1));
     clear_bit(ctx->bitset, node_index(level, index));
   }
@@ -134,25 +172,18 @@ void buddy_free_fn(allo_t *self, void *ptr, size_t size) {
                                             index * (ctx->total_size >> level));
       // Unpoison only the header for the free list
       ALLOC_UNPOISON(node, sizeof(buddy_node_t));
-      node->next = ctx->free_lists[level];
-      ctx->free_lists[level] = node;
+      list_push(ctx, level, node);
       break;
     }
 
     // Buddy is free, merge it
-    buddy_node_t **curr = &ctx->free_lists[level];
     void *buddy_ptr =
         (char *)ctx->buffer + buddy_idx * (ctx->total_size >> level);
-    while (*curr && *curr != (buddy_node_t *)buddy_ptr) {
-      buddy_node_t *prev = *curr;
-      curr = &(prev->next);
-    }
-    if (*curr) {
-      buddy_node_t *to_remove = *curr;
-      *curr = to_remove->next;
-      // Poison the header of the buddy we are removing from the free list
-      ALLOC_POISON(to_remove, sizeof(buddy_node_t));
-    }
+    buddy_node_t *buddy_node = (buddy_node_t *)buddy_ptr;
+    list_remove(ctx, level, buddy_node);
+    // Poison the header of the buddy we are removing from the free list
+    ALLOC_POISON(buddy_node, sizeof(buddy_node_t));
+
     clear_bit(ctx->bitset, node_index(level, buddy_idx));
 
     level--;
@@ -267,8 +298,7 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
     return ALLO_ERR_NOMEM;
   }
 
-  ctx->free_lists[0] = (buddy_node_t *)ctx->buffer;
-  ctx->free_lists[0]->next = NULL;
+  list_push(ctx, 0, (buddy_node_t *)ctx->buffer);
   set_bit(ctx->bitset, node_index(0, 0));
 
   ALLOC_POISON(ctx->buffer, ctx->total_size);
