@@ -14,7 +14,14 @@ void test_c_allocator(void) {
   printf("C allocator test passed\n");
 }
 
+void test_c_validation(void) {
+  printf("Testing C Allocator: Validation\n");
+  assert(make_c_allocator(NULL) == ALLO_ERR_INVAL);
+  printf("C validation tests passed!\n");
+}
+
 int main(void) {
+  test_c_validation();
   test_c_allocator();
   return 0;
 }

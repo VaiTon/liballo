@@ -48,7 +48,23 @@ void test_pool_exhaustive(void) {
   printf("Pool exhaustive test passed\n");
 }
 
+void test_pool_validation(void) {
+  printf("Testing Pool Allocator: Validation\n");
+  allo_t a, child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+
+  assert(make_pool_allocator(NULL, &child, NULL, 64, 10) == ALLO_ERR_INVAL);
+  // Special case: if buffer is NULL, child MUST NOT be NULL
+  assert(make_pool_allocator(&a, NULL, NULL, 64, 10) == ALLO_ERR_INVAL);
+  assert(make_pool_allocator(&a, &child, NULL, 0, 10) == ALLO_ERR_INVAL);
+  assert(make_pool_allocator(&a, &child, NULL, 64, 0) == ALLO_ERR_INVAL);
+
+  allo_destroy(&child);
+  printf("Pool validation tests passed!\n");
+}
+
 int main(void) {
+  test_pool_validation();
   test_pool_allocator();
   test_pool_exhaustive();
   return 0;

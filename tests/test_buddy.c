@@ -107,7 +107,21 @@ void test_buddy_torture(void) {
   printf("Buddy torture tests passed!\n");
 }
 
+void test_buddy_validation(void) {
+  printf("Testing Buddy Allocator: Validation\n");
+  allo_t a, child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+
+  assert(make_buddy_allocator(NULL, &child, NULL, 1024) == ALLO_ERR_INVAL);
+  assert(make_buddy_allocator(&a, NULL, NULL, 1024) == ALLO_ERR_INVAL);
+  assert(make_buddy_allocator(&a, &child, NULL, 0) == ALLO_ERR_INVAL);
+
+  allo_destroy(&child);
+  printf("Buddy validation tests passed!\n");
+}
+
 int main(void) {
+  test_buddy_validation();
   test_buddy_basic();
   test_buddy_alignment();
   test_buddy_torture();

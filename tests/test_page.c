@@ -21,7 +21,14 @@ void test_page_allocator(void) {
   printf("Page allocator test passed\n");
 }
 
+void test_page_validation(void) {
+  printf("Testing Page Allocator: Validation\n");
+  assert(make_page_allocator(NULL) == ALLO_ERR_INVAL);
+  printf("Page validation tests passed!\n");
+}
+
 int main(void) {
+  test_page_validation();
   test_page_allocator();
   return 0;
 }

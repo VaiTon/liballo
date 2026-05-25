@@ -8,7 +8,6 @@ test_cases = [
     'test_realloc',
     'test_buddy',
     'test_calloc',
-    'test_buffer_validation',
 ]
 
 # Standard tests

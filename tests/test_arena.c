@@ -36,7 +36,21 @@ void test_arena_stress(void) {
   printf("Arena stress test passed\n");
 }
 
+void test_arena_validation(void) {
+  printf("Testing Arena Allocator: Validation\n");
+  allo_t a, child;
+  assert(make_c_allocator(&child) == ALLO_OK);
+
+  assert(make_arena_allocator(NULL, &child, 1024) == ALLO_ERR_INVAL);
+  assert(make_arena_allocator(&a, NULL, 1024) == ALLO_ERR_INVAL);
+  assert(make_arena_allocator(&a, &child, 0) == ALLO_ERR_INVAL);
+
+  allo_destroy(&child);
+  printf("Arena validation tests passed!\n");
+}
+
 int main(void) {
+  test_arena_validation();
   test_arena_allocator();
   test_arena_stress();
   return 0;
