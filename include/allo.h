@@ -117,6 +117,16 @@ allo_error_t make_mtx_allocator(allo_t *out, allo_t *target);
 allo_error_t make_fallback_allocator(allo_t *out, allo_t *primary,
                                      allo_t *fallback);
 
+/*
+ * A high-performance, general-purpose allocator.
+ *
+ * It uses a multi-tiered strategy:
+ * - Small objects (< 2KB) are handled by specialized pool allocators.
+ * - Medium objects (2KB - 1MB) are handled by a buddy allocator.
+ * - Large objects (> 1MB) are handled directly by the page allocator.
+ */
+allo_error_t make_gen_allocator(allo_t *out);
+
 /**
  * Allocates memory using the provided allocator.
  * If the allocation fails, it returns NULL.
