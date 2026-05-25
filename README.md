@@ -59,9 +59,13 @@ meson test -C build
   - **C Allocator**: A thin wrapper around `malloc` and `free`.
   - **Page Allocator**: Directly requests pages from the OS (`mmap`). Each allocation is page-aligned.
   - **Fixed Buffer Allocator**: A fast, linear allocator that operates on a pre-allocated memory block.
-  - **Arena Allocator**: A growable region-based allocator that handles allocations in large blocks. Reclaims memory all at once.
+  - **Arena Allocator**: A growable region-based allocator that handles allocations in large blocks.
   - **Pool Allocator**: Manages fixed-size blocks with a free list for $O(1)$ allocation and deallocation.
   - **Buddy Allocator**: A binary buddy allocator that minimizes fragmentation by splitting and merging power-of-two blocks.
+  - **Locking Wrapper**: A thread-safe wrapper that adds a mutex around any existing allocator.
+  - **Fallback Allocator**: A compositor that tries a primary allocator first, then spills over to a secondary one.
+- **Containment API**: A tristate interface (`YES`, `NO`, `UNKNOWN`) to query if an allocator owns a specific pointer, enabling intelligent routing and realloc spillover.
+- **Internal Safety**: Specialized allocators use ownership checks as internal guards to prevent "pointer mixing" and accidental memory corruption.
 - **No-Stdlib Support**: Can be compiled without the standard C library (`ALLO_NOSTDLIB`) for embedded or kernel-space use.
 
 ## Advanced Testing & Verification
