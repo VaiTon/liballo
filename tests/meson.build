@@ -8,18 +8,21 @@ test_cases = [
     'test_realloc',
     'test_buddy',
     'test_calloc',
+    'test_mtx',
+    'test_fallback',
 ]
 
-# Standard tests
 foreach t : test_cases
     exe = executable(
         t,
         t + '.c',
         include_directories: liballo_headers,
         link_with: liballo_lib,
+        dependencies: [threads_dep],
     )
     test(t, exe)
 endforeach
+
 
 # Fuzzer (Clang only)
 cc = meson.get_compiler('c')
