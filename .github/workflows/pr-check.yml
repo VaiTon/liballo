@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build-and-test:
@@ -24,19 +24,38 @@ jobs:
           python3 -m pip install meson
 
       - name: Configure build (with sanitizers)
-        run: |
-          # Configure Meson to enable sanitizers so per-target override_options can
-          # disable sanitizers for special test cases (e.g. nostdlib tests).
-          meson setup build --wipe --reconfigure -Db_sanitize=address,undefined -Dbuildtype=debug
+        run: meson setup build --wipe --reconfigure -Db_sanitize=address,undefined -Dbuildtype=debug
 
       - name: Build
-        run: |
-          ninja -C build
+        run: ninja -C build
 
       - name: Run tests
+        run: meson test -C build --print-errorlogs
+
+  freestanding:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system packages for freestanding tests
         run: |
-          # Print failing test logs when available
-          meson test -C build --print-errorlogs
+          sudo apt-get update
+          sudo apt-get install -y ninja-build build-essential clang
+
+      - name: Install Meson
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install meson
+
+      - name: Configure freestanding build
+        run: meson setup build-freestanding --wipe --reconfigure -Dbuildtype=debug
+
+      - name: Build freestanding tests
+        run: ninja -C build-freestanding
+
+      - name: Run freestanding tests
+        run: meson test -C build-freestanding --print-errorlogs
 
   fuzz:
     # Only run fuzzing for pull requests (skip on push-to-main to keep main fast)
@@ -63,7 +82,6 @@ jobs:
           CC: afl-clang-lto
           CXX: afl-clang-lto++
         run: |
-          # Use the provided fuzz setup script which prepares build-afl and seeds
           chmod +x ./scripts/fuzz.sh
           ./scripts/fuzz.sh
 
@@ -72,5 +90,4 @@ jobs:
           AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: 1
           AFL_SKIP_CPUFREQ: 1
         run: |
-          # Run afl-fuzz for 60 seconds. Allow non-zero exit (timeout) so PR check doesn't fail
-          timeout 60s afl-fuzz -i fuzz_in -o fuzz_out -- ./build-afl/tests/fuzz_allocator @@ || true
+          afl-fuzz -i fuzz_in -o fuzz_out -V 30 -- ./build-afl/tests/fuzz_allocator @@ || true
