@@ -1,5 +1,7 @@
 #include "allo.h"
-#include "asan.h"
+#include "allo_asan.h"
+#include "allo_mem.h"
+
 #include <stdlib.h>
 #include <string.h>
 

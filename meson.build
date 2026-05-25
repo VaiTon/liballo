@@ -11,6 +11,12 @@ project(
 )
 
 cc = meson.get_compiler('c')
+
+if get_option('freestanding')
+    add_project_arguments('-DALLO_NOSTDLIB', '-ffreestanding', language: 'c')
+endif
+
+threads_dep = dependency('threads', required: not get_option('freestanding'))
 liballo_headers = include_directories('include')
 
 install_headers('include/allo.h', subdir: 'liballo')

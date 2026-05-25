@@ -1,14 +1,14 @@
 #define _GNU_SOURCE
 #include "allo.h"
-#include "asan.h"
+#include "allo_asan.h"
+#include "allo_assert.h"
+#include "allo_mem.h"
 
 #ifdef ALLO_NOSTDLIB
   #include "allo_page_x86.c"
 #else
   #include "allo_page_posix.c"
 #endif
-
-#include <assert.h>
 
 typedef struct {
   size_t page_size;

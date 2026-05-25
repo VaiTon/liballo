@@ -1,6 +1,8 @@
 #include "allo.h"
-#include "asan.h"
-#include <assert.h>
+#include "allo_asan.h"
+#include "allo_mem.h"
+#include "allo_assert.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -19,7 +21,8 @@ void *buf_alloc_fn(allo_t *self, size_t size) {
   }
   allocator_buf_context_t *ctx = (allocator_buf_context_t *)self->_state;
 
-  assert(ctx->offset <= ctx->size && "Offset should never exceed buffer size");
+  ALLO_ASSERT(ctx->offset <= ctx->size &&
+              "Offset should never exceed buffer size");
 
   size_t aligned_offset = ALLO_ALIGN_UP(ctx->offset, 8);
   if (aligned_offset > ctx->size || size > ctx->size - aligned_offset) {
@@ -73,7 +76,7 @@ void *buf_realloc_fn(allo_t *self, void *ptr, size_t old_size,
     return NULL;
   }
 
-  memcpy(new_ptr, ptr, old_size);
+  allo_memcpy(new_ptr, ptr, old_size);
   return new_ptr;
 }
 

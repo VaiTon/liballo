@@ -1,3 +1,7 @@
+if get_option('freestanding')
+    subdir_done()
+endif
+
 ubench_proj = subproject('ubench')
 ubench_dep = ubench_proj.get_variable('ubench_dep')
 

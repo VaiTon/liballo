@@ -1,6 +1,7 @@
 #include "allo.h"
-#include "asan.h"
-#include <assert.h>
+#include "allo_asan.h"
+#include "allo_assert.h"
+#include "allo_mem.h"
 
 typedef struct pool_free_node {
   struct pool_free_node *next;
@@ -48,7 +49,7 @@ void *pool_alloc_fn(allo_t *self, size_t size) {
 
 void *pool_realloc_fn(allo_t *self, void *ptr, size_t old_size,
                       size_t new_size) {
-  assert(ptr == NULL || pool_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
+  ALLO_ASSERT(ptr == NULL || pool_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
   pool_context_t *ctx = (pool_context_t *)self->_state;
   (void)old_size;
 
@@ -62,7 +63,7 @@ void *pool_realloc_fn(allo_t *self, void *ptr, size_t old_size,
 void pool_free_fn(allo_t *self, void *ptr, size_t size) {
   if (!ptr)
     return;
-  assert(pool_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
+  ALLO_ASSERT(pool_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
   (void)size;
   pool_context_t *ctx = (pool_context_t *)self->_state;
   pool_free_node_t *node = (pool_free_node_t *)ptr;

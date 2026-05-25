@@ -6,7 +6,7 @@ int main(void) {
   allo_t primary, fallback, fb;
   ALLO_ALIGNED_BUF(pool_buf, 64);
   ALLO_ALIGNED_BUF(fallback_buf, 256);
-  
+
   // Primary: Pool with only 1 block of 64 bytes
   assert(make_pool_allocator(&primary, NULL, pool_buf, 64, 1) == ALLO_OK);
   // Fallback: Fixed buffer
@@ -33,7 +33,7 @@ int main(void) {
   // 4. Test realloc spillover
   void *p3 = allo_alloc(&fb, 32);
   assert(allo_contains(&primary, p3) == ALLO_CONTAINS_YES);
-  
+
   // Realloc to 128 bytes (pool only has 64)
   void *p4 = allo_realloc(&fb, p3, 32, 128);
   assert(p4 != NULL);

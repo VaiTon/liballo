@@ -1,5 +1,5 @@
-#ifndef ASAN_H
-#define ASAN_H
+#ifndef ALLO_ASAN_H
+#define ALLO_ASAN_H
 
 // ASAN integration helpers
 // We need to avoid using the Clang-specific __has_feature operator in
@@ -12,7 +12,7 @@
   #define ALLOC_POISON(addr, size) ASAN_POISON_MEMORY_REGION(addr, size)
   #define ALLOC_UNPOISON(addr, size) ASAN_UNPOISON_MEMORY_REGION(addr, size)
 #elif defined(__clang__)
-/* clang supports __has_feature */
+  /* clang supports __has_feature */
   #if __has_feature(address_sanitizer)
     #include <sanitizer/asan_interface.h>
     #define ALLOC_POISON(addr, size) ASAN_POISON_MEMORY_REGION(addr, size)
@@ -31,4 +31,4 @@
   #define ALLOC_UNPOISON(addr, size) ((void)(addr), (void)(size))
 #endif
 
-#endif /* ASAN_H */
+#endif /* ALLO_ASAN_H */

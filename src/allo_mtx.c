@@ -1,4 +1,5 @@
 #include "allo.h"
+#include "allo_mem.h"
 #include <threads.h>
 
 typedef struct {

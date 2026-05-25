@@ -1,6 +1,6 @@
 #include "allo.h"
-#include <assert.h>
-#include <string.h>
+#include "allo_assert.h"
+#include "allo_mem.h"
 
 typedef struct {
   allo_t *primary;
@@ -42,7 +42,7 @@ static void *fallback_realloc_fn(allo_t *self, void *ptr, size_t old_size,
       return NULL;
     }
     size_t copy_size = old_size < new_size ? old_size : new_size;
-    memcpy(new_ptr, ptr, copy_size);
+    allo_memcpy(new_ptr, ptr, copy_size);
     allo_free(ctx->primary, ptr, old_size);
     return new_ptr;
   }

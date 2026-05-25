@@ -1,9 +1,9 @@
 #include "allo.h"
-#include "asan.h"
-#include <assert.h>
+#include "allo_asan.h"
+#include "allo_assert.h"
+#include "allo_mem.h"
+
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 typedef struct buddy_node {
   struct buddy_node *next;
@@ -111,7 +111,7 @@ allo_contains_t buddy_contains_fn(allo_t *self, void *ptr) {
 void buddy_free_fn(allo_t *self, void *ptr, size_t size) {
   if (!ptr)
     return;
-  assert(buddy_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
+  ALLO_ASSERT(buddy_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
   buddy_context_t *ctx = (buddy_context_t *)self->_state;
 
   int order = get_order(size);
@@ -162,7 +162,7 @@ void buddy_free_fn(allo_t *self, void *ptr, size_t size) {
 
 void *buddy_realloc_fn(allo_t *self, void *ptr, size_t old_size,
                        size_t new_size) {
-  assert(ptr == NULL || buddy_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
+  ALLO_ASSERT(ptr == NULL || buddy_contains_fn(self, ptr) == ALLO_CONTAINS_YES);
   if (!ptr)
     return buddy_alloc_fn(self, new_size);
   if (new_size == 0) {
@@ -175,7 +175,7 @@ void *buddy_realloc_fn(allo_t *self, void *ptr, size_t old_size,
     return NULL;
 
   size_t copy_size = old_size < new_size ? old_size : new_size;
-  memcpy(new_ptr, ptr, copy_size);
+  allo_memcpy(new_ptr, ptr, copy_size);
   buddy_free_fn(self, ptr, old_size);
   return new_ptr;
 }

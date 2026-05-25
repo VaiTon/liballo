@@ -1,4 +1,5 @@
 #include "allo.h"
+#include "allo_mem.h"
 
 void *allo_calloc(allo_t *a, size_t nmemb, size_t size) {
   if (size > 0 && nmemb > (size_t)-1 / size) {
@@ -7,7 +8,7 @@ void *allo_calloc(allo_t *a, size_t nmemb, size_t size) {
   size_t total = nmemb * size;
   void *ptr = allo_alloc(a, total);
   if (ptr) {
-    memset(ptr, 0, total);
+    allo_memset(ptr, 0, total);
   }
   return ptr;
 }

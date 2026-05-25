@@ -1,7 +1,8 @@
 #include "allo.h"
-#include "asan.h"
+#include "allo_asan.h"
+#include "allo_mem.h"
+#include "allo_assert.h"
 
-#include <assert.h>
 #include <stdbool.h>
 
 typedef struct arena_block {
@@ -136,7 +137,7 @@ void *arena_realloc_fn(allo_t *self, void *ptr, size_t old_size,
     return NULL;
   }
 
-  memcpy(new_ptr, ptr, old_size);
+  allo_memcpy(new_ptr, ptr, old_size);
   return new_ptr;
 }
 

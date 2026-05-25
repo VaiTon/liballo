@@ -4,24 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#ifndef ALLO_NOSTDLIB
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <string.h>
-#else
-void *memcpy(void *dest, const void *src, size_t n);
-void *memset(void *s, int c, size_t n);
-#endif
-
 #define ALLO_MAX_ALLOCATOR_CTX_SIZE 128
-
-#define ALLO_ALIGN_UP(size, align)                                             \
-  (((size) + ((size_t)(align) - 1)) & ~((size_t)(align) - 1))
-
-#define ALLO_ALIGNED_BUF(name, size) _Alignas(8) char name[(size)]
-
-#define ALLO_IS_ALIGNED(ptr, align)                                            \
-  (((size_t)(ptr) & ((size_t)(align) - 1)) == 0)
 
 typedef enum {
   ALLO_OK = 0,
@@ -194,5 +177,18 @@ void *allo_calloc(allo_t *a, size_t nmemb, size_t size);
  * remains unchanged.
  */
 void *allo_realloc(allo_t *a, void *ptr, size_t old_size, size_t new_size);
+
+/**
+ * Convenience macro to round up a size to the nearest multiple of an alignment.
+ * This must be used with the fixed buffer allocator.
+ */
+
+#define ALLO_ALIGN_UP(size, align)                                             \
+  (((size) + ((size_t)(align) - 1)) & ~((size_t)(align) - 1))
+
+#define ALLO_ALIGNED_BUF(name, size) _Alignas(8) char(name)[(size)]
+
+#define ALLO_IS_ALIGNED(ptr, align)                                            \
+  (((size_t)(ptr) & ((size_t)(align) - 1)) == 0)
 
 #endif /* ALLO_H */
