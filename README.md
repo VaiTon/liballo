@@ -1,4 +1,4 @@
-# liballo
+# liballo 👋
 
 `liballo` is a lightweight, extensible memory allocator library for C. It provides a unified interface for various memory management strategies, ranging from simple standard library wrappers to high-performance arena and pool allocators.
 
@@ -16,7 +16,7 @@ int main() {
 
     // Allocate memory
     void *ptr = allo_alloc(&arena, 128);
-    
+
     // Reallocate
     ptr = allo_realloc(&arena, ptr, 128, 256);
 
