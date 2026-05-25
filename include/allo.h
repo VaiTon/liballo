@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ALLO_H
+#define ALLO_H
 
 #include <stddef.h>
 
@@ -16,7 +17,7 @@ void *memset(void *s, int c, size_t n);
 #define ALLO_ALIGN_UP(size, align)                                             \
   (((size) + ((size_t)(align) - 1)) & ~((size_t)(align) - 1))
 
-#define ALLO_ALIGNED_BUF(name, size) _Alignas(8) char name[size]
+#define ALLO_ALIGNED_BUF(name, size) _Alignas(8) char name[(size)]
 
 #define ALLO_IS_ALIGNED(ptr, align)                                            \
   (((size_t)(ptr) & ((size_t)(align) - 1)) == 0)
@@ -119,3 +120,5 @@ static inline void allo_destroy(allo_t *a) {
     a->_destroy(a);
   }
 }
+
+#endif /* ALLO_H */

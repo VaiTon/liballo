@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ASAN_H
+#define ASAN_H
 
 // ASAN integration helpers
 // We need to avoid using the Clang-specific __has_feature operator in
@@ -29,3 +30,5 @@
   #define ALLOC_POISON(addr, size) ((void)(addr), (void)(size))
   #define ALLOC_UNPOISON(addr, size) ((void)(addr), (void)(size))
 #endif
+
+#endif /* ASAN_H */

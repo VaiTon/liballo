@@ -6,7 +6,3 @@ Checks: >
   portability-*,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
 HeaderFilterRegex: '^(src|include|tests)/'
-WarningsAsErrors: ''
-AnalyzeTemporaryDtors: false
-FormatStyle: none
-...
