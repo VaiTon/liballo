@@ -51,10 +51,10 @@ void test_zero_alloc(void) {
   assert(allo_alloc(&p, 0) == NULL);
 
   // free(NULL) should be a safe no-op.
-  allo_free(&c, NULL);
-  allo_free(&b, NULL);
-  allo_free(&a, NULL);
-  allo_free(&p, NULL);
+  allo_free(&c, NULL, 0);
+  allo_free(&b, NULL, 0);
+  allo_free(&a, NULL, 0);
+  allo_free(&p, NULL, 0);
 
   allo_destroy(&c);
   allo_destroy(&b);

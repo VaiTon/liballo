@@ -16,7 +16,7 @@ void test_calloc(void) {
     assert(ptr[i] == 0);
   }
 
-  allo_free(&a, ptr);
+  allo_free(&a, ptr, nmemb * size);
   allo_destroy(&a);
   printf("allo_calloc test passed\n");
 }

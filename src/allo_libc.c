@@ -14,8 +14,9 @@ void *c_realloc_fn(allo_t *self, void *ptr, size_t old_size, size_t new_size) {
   return realloc(ptr, new_size);
 }
 
-void c_free_fn(allo_t *self, void *ptr) {
+void c_free_fn(allo_t *self, void *ptr, size_t size) {
   (void)self;
+  (void)size;
   if (ptr == NULL) {
     return;
   }

@@ -9,7 +9,7 @@ void test_c_allocator(void) {
   void *p1 = allo_alloc(&a, 100);
   assert(p1 != NULL);
   memset(p1, 0xAA, 100);
-  allo_free(&a, p1);
+  allo_free(&a, p1, 100);
   allo_destroy(&a);
   printf("C allocator test passed\n");
 }

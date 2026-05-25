@@ -50,9 +50,10 @@ void *pool_realloc_fn(allo_t *self, void *ptr, size_t old_size,
   return NULL;
 }
 
-void pool_free_fn(allo_t *self, void *ptr) {
+void pool_free_fn(allo_t *self, void *ptr, size_t size) {
   if (!ptr)
     return;
+  (void)size;
   pool_context_t *ctx = (pool_context_t *)self->_state;
   pool_free_node_t *node = (pool_free_node_t *)ptr;
   ALLOC_UNPOISON(node, sizeof(pool_free_node_t));
@@ -64,7 +65,7 @@ void pool_free_fn(allo_t *self, void *ptr) {
 void pool_destroy_fn(allo_t *self) {
   pool_context_t *ctx = (pool_context_t *)self->_state;
   if (ctx->own_buffer) {
-    allo_free(ctx->child, ctx->buffer);
+    allo_free(ctx->child, ctx->buffer, ctx->block_size * ctx->total_blocks);
   }
 }
 

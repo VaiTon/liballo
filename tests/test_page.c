@@ -15,8 +15,8 @@ void test_page_allocator(void) {
   assert(p2 != p1);
   memset(p2, 0xBB, 5000);
 
-  allo_free(&a, p1);
-  allo_free(&a, p2);
+  allo_free(&a, p1, 100);
+  allo_free(&a, p2, 5000);
   allo_destroy(&a);
   printf("Page allocator test passed\n");
 }

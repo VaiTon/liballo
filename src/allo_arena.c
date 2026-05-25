@@ -115,9 +115,10 @@ void *arena_realloc_fn(allo_t *self, void *ptr, size_t old_size,
   return new_ptr;
 }
 
-void arena_free_fn(allo_t *self, void *ptr) {
+void arena_free_fn(allo_t *self, void *ptr, size_t size) {
   (void)self;
   (void)ptr;
+  (void)size;
   // Individual free is not supported in Arena
 }
 
@@ -127,7 +128,7 @@ void arena_destroy_fn(allo_t *self) {
   arena_block_t *curr = ctx->first;
   while (curr) {
     arena_block_t *next = curr->next;
-    allo_free(child, curr);
+    allo_free(child, curr, sizeof(arena_block_t) + curr->size);
     curr = next;
   }
 }

@@ -15,7 +15,7 @@ void test_pool_allocator(void) {
   assert(p2 != NULL);
   assert(p1 != p2);
 
-  allo_free(&a, p1);
+  allo_free(&a, p1, 64);
   void *p3 = allo_alloc(&a, 64);
   assert(p3 == p1); // Should reuse the block
 
@@ -40,7 +40,7 @@ void test_pool_exhaustive(void) {
   assert(allo_alloc(&a, 64) == NULL);
 
   // Free one and reuse
-  allo_free(&a, pointers[5]);
+  allo_free(&a, pointers[5], 64);
   void *p = allo_alloc(&a, 64);
   assert(p == pointers[5]);
 

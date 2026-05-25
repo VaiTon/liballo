@@ -152,7 +152,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
             abort(); // Data corruption detected
           }
         }
-        allo_free(&a, tracked[index].ptr);
+        allo_free(&a, tracked[index].ptr, tracked[index].size);
       }
 
       tracked[index].ptr = allo_alloc(&a, alloc_size);
@@ -174,7 +174,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
             }
           }
         }
-        allo_free(&a, tracked[index].ptr);
+        allo_free(&a, tracked[index].ptr, tracked[index].size);
         tracked[index].ptr = NULL;
         tracked[index].size = 0;
       }
@@ -223,7 +223,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
           }
         }
       }
-      allo_free(&a, tracked[i].ptr);
+      allo_free(&a, tracked[i].ptr, tracked[i].size);
     }
   }
 

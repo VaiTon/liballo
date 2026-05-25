@@ -59,13 +59,14 @@ void *page_realloc_fn(allo_t *self, void *ptr, size_t old_size,
   return (char *)new_real_start + ctx->page_size;
 }
 
-void page_free_fn(allo_t *self, void *ptr) {
+void page_free_fn(allo_t *self, void *ptr, size_t size) {
   if (ptr == NULL) {
     return;
   }
   page_context_t *ctx = (page_context_t *)self->_state;
+  size_t rounded_size = (size + ctx->page_size - 1) & ~(ctx->page_size - 1);
+  size_t total_size = rounded_size + ctx->page_size;
   void *real_start = (char *)ptr - ctx->page_size;
-  size_t total_size = *(size_t *)real_start;
 
   os_munmap(real_start, total_size);
 }

@@ -42,8 +42,8 @@ void _start(void) {
     sys_exit(3);
   }
 
-  allo_free(&a, p1);
-  allo_free(&a, p2);
+  allo_free(&a, p1, 100);
+  allo_free(&a, p2, 10000);
   allo_destroy(&a);
 
   sys_exit(0);

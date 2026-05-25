@@ -37,7 +37,7 @@ void test_realloc_common(allo_t *a, const char *name) {
   void *p5 = allo_realloc(a, p4, 80, 0);
   assert(p5 == NULL);
 
-  allo_free(a, p3);
+  allo_free(a, p3, 200);
   allo_destroy(a);
   printf("Realloc test for %s passed\n", name);
 }
