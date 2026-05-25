@@ -10,16 +10,17 @@ liballo_sources = [
     'allo_gen.c',
 ]
 
-deps = []
+lss_proj = subproject('linux-syscall-support')
+lss_dep = lss_proj.get_variable('lss_dep')
 
-if not get_option('freestanding')
-    liballo_sources += ['allo_libc.c', 'allo_mtx.c']
-    deps += [threads_dep]
-endif
-
+deps = [lss_dep]
 lib_link_args = []
+
 if get_option('freestanding')
     lib_link_args += ['-nostdlib']
+else
+    liballo_sources += ['allo_libc.c', 'allo_mtx.c']
+    deps += [threads_dep]
 endif
 
 liballo_lib = library(

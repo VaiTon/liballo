@@ -5,9 +5,9 @@
 #include "allo_mem.h"
 
 #ifdef ALLO_NOSTDLIB
-  #include "allo_page_x86.c"
+  #include "allo_page_x86.h"
 #else
-  #include "allo_page_posix.c"
+  #include "allo_page_posix.h"
 #endif
 
 typedef struct {
@@ -29,7 +29,7 @@ static bool registry_ensure_capacity(page_context_t *ctx) {
   if (ctx->count == ctx->capacity) {
     size_t old_size = ctx->capacity * sizeof(page_entry_t);
     size_t new_size = old_size + ctx->page_size;
-    void *new_reg = os_mremap(ctx->registry, old_size, new_size);
+    void *new_reg = allo_os_mremap(ctx->registry, old_size, new_size);
     if (!new_reg) {
       return false;
     }
@@ -67,7 +67,7 @@ void *page_alloc_fn(allo_t *self, size_t size) {
   }
 
   size_t rounded_size = (size + ctx->page_size - 1) & ~(ctx->page_size - 1);
-  void *ptr = os_mmap(rounded_size);
+  void *ptr = allo_os_mmap(rounded_size);
   if (!ptr) {
     return NULL;
   }
@@ -101,7 +101,7 @@ void *page_realloc_fn(allo_t *self, void *ptr, size_t old_size,
 
   // Unpoison everything before realloc to avoid issues with mremap
   ALLOC_UNPOISON(ptr, rounded_old);
-  void *new_ptr = os_mremap(ptr, rounded_old, rounded_new);
+  void *new_ptr = allo_os_mremap(ptr, rounded_old, rounded_new);
 
   if (!new_ptr) {
     // Restore poisoning on failure
@@ -134,17 +134,17 @@ void page_free_fn(allo_t *self, void *ptr, size_t size) {
 
   // Unpoison before unmapping
   ALLOC_UNPOISON(ptr, rounded_size);
-  os_munmap(ptr, rounded_size);
+  allo_os_munmap(ptr, rounded_size);
 }
 
 void page_destroy_fn(allo_t *self) {
   page_context_t *ctx = (page_context_t *)self->_state;
   // Reclaim all leaked pages
   for (size_t i = 0; i < ctx->count; i++) {
-    os_munmap(ctx->registry[i].addr, ctx->registry[i].size);
+    allo_os_munmap(ctx->registry[i].addr, ctx->registry[i].size);
   }
   // Free the registry itself
-  os_munmap(ctx->registry, ctx->capacity * sizeof(page_entry_t));
+  allo_os_munmap(ctx->registry, ctx->capacity * sizeof(page_entry_t));
 }
 
 allo_contains_t page_contains_fn(allo_t *self, void *ptr) {
@@ -169,10 +169,10 @@ allo_error_t make_page_allocator(allo_t *out) {
                   ._contains = page_contains_fn};
 
   page_context_t *ctx = (page_context_t *)out->_state;
-  ctx->page_size = os_get_page_size();
+  ctx->page_size = allo_os_get_page_size();
   ctx->count = 0;
   ctx->capacity = ctx->page_size / sizeof(page_entry_t);
-  ctx->registry = (page_entry_t *)os_mmap(ctx->page_size);
+  ctx->registry = (page_entry_t *)allo_os_mmap(ctx->page_size);
 
   if (!ctx->registry) {
     return ALLO_ERR_NOMEM;

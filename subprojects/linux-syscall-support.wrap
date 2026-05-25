@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://chromium.googlesource.com/linux-syscall-support
+revision = v2024.02.01
+patch_directory = linux-syscall-support
+
+[provide]
+lss = lss_dep
