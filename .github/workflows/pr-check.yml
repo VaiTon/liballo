@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
 
       - name: Install system packages
         run: |
@@ -23,7 +23,7 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install meson
 
-      - name: Configure build (with sanitizers)
+      - name: Configure build
         run: meson setup build --wipe --reconfigure -Db_sanitize=address,undefined -Dbuildtype=debug
 
       - name: Build
@@ -36,9 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
 
-      - name: Install system packages for freestanding tests
+      - name: Install system packages
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build build-essential clang
@@ -48,13 +48,13 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install meson
 
-      - name: Configure freestanding build
+      - name: Configure build
         run: meson setup build-freestanding --wipe --reconfigure -Dbuildtype=debug
 
-      - name: Build freestanding tests
+      - name: Build tests
         run: ninja -C build-freestanding
 
-      - name: Run freestanding tests
+      - name: Run tests
         run: meson test -C build-freestanding --print-errorlogs
 
   fuzz:
@@ -63,9 +63,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
 
-      - name: Install system packages for fuzzing
+      - name: Install system packages
         run: |
           sudo apt-get update
           # Try installing afl++ (preferred), fallback to afl
@@ -85,7 +85,7 @@ jobs:
           chmod +x ./scripts/fuzz.sh
           ./scripts/fuzz.sh
 
-      - name: Run afl-fuzz for 60s
+      - name: Run afl-fuzz for 30s
         env:
           AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: 1
           AFL_SKIP_CPUFREQ: 1
