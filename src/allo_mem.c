@@ -1,7 +1,7 @@
-#include "allo_assert.h"
 #include "allo_mem.h"
 
 #ifdef ALLO_FREESTANDING
+  #include "allo_assert.h"
 
 void *allo_memcpy(void *dest, const void *src, size_t n) {
   ALLO_ASSERT(dest != NULL && src != NULL);
@@ -21,5 +21,4 @@ void *allo_memset(void *s, int c, size_t n) {
   }
   return s;
 }
-
 #endif

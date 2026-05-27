@@ -158,7 +158,7 @@ void *buddy_alloc_fn(allo_t *self, size_t size) {
   return node;
 }
 
-allo_contains_t buddy_contains_fn(allo_t *self, void *ptr) {
+allo_contains_t buddy_contains_fn(allo_t *self, const void *ptr) {
   buddy_context_t *ctx = (buddy_context_t *)self->_state;
   return (ptr >= ctx->buffer &&
           (char *)ptr < (char *)ctx->buffer + ctx->total_size)
@@ -252,7 +252,7 @@ void buddy_destroy_fn(allo_t *self) {
   if (ctx->free_lists) {
     int num_levels = ctx->max_order - get_order(ctx->min_block_size) + 1;
     size_t free_lists_count = (size_t)num_levels + 1;
-    allo_free(ctx->child, ctx->free_lists,
+    allo_free(ctx->child, (void *)ctx->free_lists,
               free_lists_count * sizeof(buddy_node_t *));
   }
   if (ctx->bitset) {
@@ -314,7 +314,7 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
 
   ctx->bitset = (uint8_t *)allo_calloc(ctx->child, bit_bytes, 1);
   if (!ctx->bitset) {
-    allo_free(ctx->child, ctx->free_lists,
+    allo_free(ctx->child, (void *)ctx->free_lists,
               free_lists_count * sizeof(buddy_node_t *));
     if (ctx->own_buffer)
       allo_free(ctx->child, ctx->buffer, ctx->total_size);
@@ -324,7 +324,7 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
   ctx->block_orders = (uint8_t *)allo_calloc(ctx->child, block_orders_len, 1);
   if (!ctx->block_orders) {
     allo_free(ctx->child, ctx->bitset, bit_bytes);
-    allo_free(ctx->child, ctx->free_lists,
+    allo_free(ctx->child, (void *)ctx->free_lists,
               free_lists_count * sizeof(buddy_node_t *));
     if (ctx->own_buffer)
       allo_free(ctx->child, ctx->buffer, ctx->total_size);

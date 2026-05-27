@@ -1,7 +1,7 @@
 #ifndef TEST_HARNESS_H
 #define TEST_HARNESS_H
 
-#ifdef ALLO_NOSTDLIB
+#ifdef ALLO_FREESTANDING
 
   #pragma GCC diagnostic ignored "-Wpedantic"
 
@@ -78,9 +78,9 @@ static inline void *__builtin_memcpy(void *dest, const void *src, size_t n) {
 #else
   #include <assert.h>
   #include <stdint.h>
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <string.h>
+  #include <stdio.h>  // IWYU pragma: export
+  #include <stdlib.h> // IWYU pragma: export
+  #include <string.h> // IWYU pragma: export
 #endif
 
 #endif // TEST_HARNESS_H

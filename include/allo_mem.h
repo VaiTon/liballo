@@ -23,4 +23,8 @@ void *allo_memcpy(void *dest, const void *src, size_t n);
 void *allo_memset(void *s, int c, size_t n);
 #endif
 
+inline static size_t allo_align_up(size_t size, size_t align) {
+  return (size + align - 1) & ~(align - 1);
+}
+
 #endif /* ALLO_MEM_H */

@@ -1,2 +1,3 @@
 option('benchmarks', type: 'boolean', value: true, description: 'Build benchmarks')
 option('freestanding', type: 'boolean', value: false, description: 'Build a freestanding library')
+option('examples', type: 'boolean', value: true, description: 'Build examples')

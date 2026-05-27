@@ -1,15 +1,11 @@
-#define _GNU_SOURCE
+#ifdef ALLO_FREESTANDING
+  #error "Page allocator is not supported in freestanding environments"
+#endif
 
 #include "allo.h"
 #include "allo_asan.h"
 #include "allo_assert.h"
-#include "allo_mem.h"
-
-#ifndef ALLO_FREESTANDING
-  #include "allo_page_posix.h"
-#else
-  #include "allo_page_x86.h"
-#endif
+#include "allo_page_posix.h"
 
 typedef struct {
   void *addr;
@@ -148,7 +144,7 @@ void page_destroy_fn(allo_t *self) {
   allo_os_munmap(ctx->registry, ctx->capacity * sizeof(page_entry_t));
 }
 
-allo_contains_t page_contains_fn(allo_t *self, void *ptr) {
+allo_contains_t page_contains_fn(allo_t *self, const void *ptr) {
   page_context_t *ctx = (page_context_t *)self->_state;
   for (size_t i = 0; i < ctx->count; i++) {
     if (ptr >= ctx->registry[i].addr &&

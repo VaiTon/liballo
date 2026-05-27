@@ -15,37 +15,14 @@ hosted_test_cases = freestanding_test_cases + [
     'test_c',
 ]
 
-if not opt_freestanding
-    foreach t : hosted_test_cases
-        exe = executable(
-            t,
-            t + '.c',
-            include_directories: liballo_headers,
-            link_with: liballo_lib,
-            dependencies: [threads_dep],
-        )
-        test(t, exe)
-    endforeach
-
-    executable(
-        'fuzz_allocator',
-        'fuzz_allocator.c',
-        include_directories: liballo_headers,
-        link_with: liballo_lib,
-    )
-endif
-
-if can_do_nostdlib
+if opt_freestanding
     foreach t : freestanding_test_cases
         exe = executable(
             t + '_nostdlib',
             [t + '.c', 'nolibc_start.c'],
-            include_directories: liballo_headers,
-            link_with: liballo_static,
+            dependencies: liballo,
             c_args: [
                 '-DALLO_FREESTANDING',
-                '-DALLO_NOSTDLIB',
-                '-ffreestanding',
                 '-fno-stack-protector',
             ],
             link_args: ['-nostdlib', '-static'],
@@ -53,4 +30,18 @@ if can_do_nostdlib
         )
         test(t + '_nostdlib', exe)
     endforeach
+else
+    foreach t : hosted_test_cases
+        exe = executable(
+            t,
+            t + '.c',
+            dependencies: liballo,
+        )
+        test(t, exe)
+    endforeach
+
+    afl = find_program('afl-fuzz', required: false)
+    if afl.found()
+        executable('fuzz_allocator', 'fuzz_allocator.c', dependencies: [liballo])
+    endif
 endif

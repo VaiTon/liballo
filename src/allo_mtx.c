@@ -1,5 +1,5 @@
 #include "allo.h"
-#include "allo_mem.h"
+
 #include <threads.h>
 
 typedef struct {
@@ -36,7 +36,7 @@ static void allo_mtx_destroy(allo_t *self) {
   mtx_destroy(&ctx->mutex);
 }
 
-allo_contains_t allo_mtx_contains(allo_t *self, void *ptr) {
+allo_contains_t allo_mtx_contains(allo_t *self, const void *ptr) {
   allo_mtx_ctx_t *ctx = (allo_mtx_ctx_t *)self->_state;
   return allo_contains(ctx->target, ptr);
 }

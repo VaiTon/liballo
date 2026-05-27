@@ -39,10 +39,17 @@ void test_buffer_allocator(void) {
   printf("Fixed Buffer basic tests passed!\n");
 }
 
+static inline void *align_up(void *ptr, size_t align) {
+  return (void *)(((uintptr_t)ptr + align - 1) & ~(align - 1));
+}
+
 void test_buffer_boundary(void) {
   printf("Testing Fixed Buffer Allocator: Boundary\n");
   char buffer[128];
-  void *aligned = (void *)(((uintptr_t)buffer + 7) & ~((uintptr_t)7));
+
+  size_t offset = (-(uintptr_t)buffer) & 7;
+  void *aligned = (char *)buffer + offset;
+
   allo_t a;
   assert(make_fixed_buf_allocator(&a, aligned, 64) == ALLO_OK);
 

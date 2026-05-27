@@ -64,7 +64,7 @@ static void fallback_free_fn(allo_t *self, void *ptr, size_t size) {
   }
 }
 
-allo_contains_t fallback_contains_fn(allo_t *self, void *ptr) {
+allo_contains_t fallback_contains_fn(allo_t *self, const void *ptr) {
   fallback_context_t *ctx = (fallback_context_t *)self->_state;
   allo_contains_t primary = allo_contains(ctx->primary, ptr);
   if (primary == ALLO_CONTAINS_YES)

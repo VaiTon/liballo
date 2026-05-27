@@ -1,5 +1,4 @@
 #include "allo.h"
-#include "allo_assert.h"
 #include "allo_mem.h"
 
 #define POOL_COUNT 8
@@ -117,7 +116,7 @@ static void gen_destroy_fn(allo_t *self) {
   allo_destroy(&page);
 }
 
-static allo_contains_t gen_contains_fn(allo_t *self, void *ptr) {
+static allo_contains_t gen_contains_fn(allo_t *self, const void *ptr) {
   gen_context_t *ctx = (gen_context_t *)self->_state;
   gen_state_t *s = ctx->state;
 

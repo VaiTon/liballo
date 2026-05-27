@@ -2,7 +2,7 @@
 #define ALLO_ASSERT_H
 
 #ifndef ALLO_FREESTANDING
-  #include <assert.h>
+  #include <assert.h> // IWYU pragma: export
   #define ALLO_ASSERT(x) assert(x)
 #else
   #define ALLO_ASSERT(x) ((void)0)

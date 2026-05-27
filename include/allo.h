@@ -39,7 +39,7 @@ typedef struct allo {
                     size_t new_size);
   void (*_free_mem)(struct allo *self, void *ptr, size_t size);
   void (*_destroy)(struct allo *self);
-  allo_contains_t (*_contains)(struct allo *self, void *ptr);
+  allo_contains_t (*_contains)(struct allo *self, const void *ptr);
   _Alignas(8) char _state[ALLO_MAX_ALLOCATOR_CTX_SIZE];
 } allo_t;
 
@@ -151,7 +151,8 @@ static inline void allo_free(allo_t *a, void *ptr, size_t size) {
  * using the allocator or any memory allocated by it is Undefined Behavior.
  *
  * Calling this function on an uninitialized allocator (or an allocator whose
- * initialization failed) is Undefined Behavior.
+ * initialization failed) is Undefined Behavior. Not all allocators have a
+ * destroy function; in that case, this function does nothing.
  *
  * Note: Allocators that use a child allocator do NOT destroy the child
  * allocator when they are destroyed.
@@ -170,7 +171,7 @@ static inline void allo_destroy(allo_t *a) {
  * - ALLO_CONTAINS_UNKNOWN: Allocator does not track this information (e.g.
  * Libc).
  */
-static inline allo_contains_t allo_contains(allo_t *a, void *ptr) {
+static inline allo_contains_t allo_contains(allo_t *a, const void *ptr) {
   if (a->_contains) {
     return a->_contains(a, ptr);
   }
@@ -178,10 +179,10 @@ static inline allo_contains_t allo_contains(allo_t *a, void *ptr) {
 }
 
 /**
- * Allocates memory for an array of `nmemb` elements of `size` bytes each, and
+ * Allocates memory for an array of `n` elements of `size` bytes each, and
  * initializes all bytes to zero. If the allocation fails, it returns NULL.
  */
-void *allo_calloc(allo_t *a, size_t nmemb, size_t size);
+void *allo_calloc(allo_t *a, size_t n, size_t size);
 
 /**
  * Reallocates memory previously allocated by the allocator.
@@ -199,10 +200,7 @@ void *allo_realloc(allo_t *a, void *ptr, size_t old_size, size_t new_size);
  * This must be used with the fixed buffer allocator.
  */
 
-#define ALLO_ALIGN_UP(size, align)                                             \
-  (((size) + ((size_t)(align) - 1)) & ~((size_t)(align) - 1))
-
-#define ALLO_ALIGNED_BUF(name, size) _Alignas(8) char(name)[(size)]
+#define ALLO_ALIGNED_BUF(name, size) _Alignas(max_align_t) char(name)[(size)]
 
 #define ALLO_IS_ALIGNED(ptr, align)                                            \
   (((size_t)(ptr) & ((size_t)(align) - 1)) == 0)

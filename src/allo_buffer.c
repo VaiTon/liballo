@@ -24,7 +24,7 @@ void *buf_alloc_fn(allo_t *self, size_t size) {
   ALLO_ASSERT(ctx->offset <= ctx->size &&
               "Offset should never exceed buffer size");
 
-  size_t aligned_offset = ALLO_ALIGN_UP(ctx->offset, 8);
+  size_t aligned_offset = allo_align_up(ctx->offset, 8);
   if (aligned_offset > ctx->size || size > ctx->size - aligned_offset) {
     return NULL;
   }
@@ -35,7 +35,7 @@ void *buf_alloc_fn(allo_t *self, size_t size) {
   return ptr;
 }
 
-allo_contains_t buf_contains_fn(allo_t *self, void *ptr) {
+allo_contains_t buf_contains_fn(allo_t *self, const void *ptr) {
   allocator_buf_context_t *ctx = (allocator_buf_context_t *)self->_state;
   return (ptr >= ctx->buffer && (char *)ptr < (char *)ctx->buffer + ctx->size)
              ? ALLO_CONTAINS_YES

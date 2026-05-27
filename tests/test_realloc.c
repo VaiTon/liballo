@@ -57,7 +57,7 @@ void test_buffer_realloc_inplace(void) {
 }
 
 int main(void) {
-#ifndef ALLO_NOSTDLIB
+#ifndef ALLO_FREESTANDING
   allo_t c;
   assert(make_c_allocator(&c) == ALLO_OK);
   test_realloc_common(&c, "C Allocator");
@@ -68,7 +68,7 @@ int main(void) {
   assert(make_fixed_buf_allocator(&b, buf, 2048) == ALLO_OK);
   test_realloc_common(&b, "Fixed Buffer");
 
-#ifndef ALLO_NOSTDLIB
+#ifndef ALLO_FREESTANDING
   allo_t root;
   assert(make_c_allocator(&root) == ALLO_OK);
   allo_t arena;

@@ -52,7 +52,8 @@ void test_buddy_alignment(void) {
     void *p = allo_alloc(&buddy, 1);
     assert(((uintptr_t)p % 8) == 0);
     allo_free(&buddy, p, 1);
-    if (i % 10 == 0) printf("alignment iter %d\n", i);
+    if (i % 10 == 0)
+      printf("alignment iter %d\n", i);
   }
 
   allo_destroy(&buddy);

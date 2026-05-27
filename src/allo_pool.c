@@ -19,7 +19,7 @@ typedef struct {
 static_assert(sizeof(pool_context_t) <= ALLO_MAX_ALLOCATOR_CTX_SIZE,
               "Pool allocator context exceeds maximum size");
 
-allo_contains_t pool_contains_fn(allo_t *self, void *ptr) {
+allo_contains_t pool_contains_fn(allo_t *self, const void *ptr) {
   pool_context_t *ctx = (pool_context_t *)self->_state;
   size_t total_size = ctx->block_size * ctx->total_blocks;
   return (ptr >= ctx->buffer && (char *)ptr < (char *)ctx->buffer + total_size)
@@ -99,7 +99,7 @@ allo_error_t make_pool_allocator(allo_t *out, allo_t *child, void *buffer,
   size_t min_size = sizeof(pool_free_node_t);
   size_t actual_block_size = block_size < min_size ? min_size : block_size;
   // Ensure block_size is aligned to pointer size
-  ctx->block_size = ALLO_ALIGN_UP(actual_block_size, 8);
+  ctx->block_size = allo_align_up(actual_block_size, 8);
   ctx->total_blocks = total_blocks;
   ctx->own_buffer = (buffer == NULL);
 
