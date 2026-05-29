@@ -1,5 +1,6 @@
 #include "allo.h"
 #include "allo_mem.h"
+#include <stdint.h>
 
 #define POOL_COUNT 8
 #define BUDDY_TOTAL_SIZE (16UL * 1024UL * 1024UL) // 16MB for buddy
@@ -21,13 +22,33 @@ typedef struct {
   gen_state_t *state;
 } gen_context_t;
 
+static const uint8_t pool_index_table[128] = {
+    0,                                              // 1..16 bytes
+    1,                                              // 17..32 bytes
+    2, 2,                                           // 33..64 bytes
+    3, 3, 3, 3,                                     // 65..128 bytes
+    4, 4, 4, 4, 4, 4, 4, 4,                         // 129..256 bytes
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, // 257..512 bytes
+
+    // 513..1024 bytes
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6,
+
+    // 1025..2048 bytes
+    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7};
+
 static inline int get_pool_index(size_t size) {
-  for (int i = 0; i < POOL_COUNT; i++) {
-    if (size <= pool_sizes[i]) {
-      return i;
-    }
-  }
-  return -1;
+  if (size == 0)
+    return 0;
+
+  size_t idx = (size - 1) >> 4;
+
+  if (idx > 127)
+    return 7;
+
+  return pool_index_table[idx];
 }
 
 static void *gen_alloc_fn(allo_t *self, size_t size) {
@@ -140,8 +161,9 @@ allo_error_t make_gen_allocator(allo_t *out) {
   // Use page allocator to bootstrap the internal state
   allo_t page;
   allo_error_t err = make_page_allocator(&page);
-  if (err != ALLO_OK)
+  if (err != ALLO_OK) {
     return err;
+  }
 
   gen_state_t *s = allo_alloc(&page, sizeof(gen_state_t));
   if (!s) {
