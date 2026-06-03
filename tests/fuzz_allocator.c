@@ -9,7 +9,7 @@
 // harness, but the *actual* limits used in each run will be determined by the
 // input.
 #define ABSOLUTE_MAX_POINTERS 128
-#define ABSOLUTE_MAX_ALLOC 65536
+#define ABSOLUTE_MAX_ALLOC (2 * 1024 * 1024)
 
 typedef enum {
   OP_ALLOC = 0,
@@ -27,11 +27,11 @@ typedef struct {
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   // Need at least enough bytes for global config (selector + max_ptrs +
   // max_alloc)
-  if (Size < 6)
+  if (Size < 7)
     return 0;
 
   // --- 1. Global Configuration via Input ---
-  uint8_t selector = Data[0] % 6;
+  uint8_t selector = Data[0] % 7;
 
   // Determine how many pointers we will track in this run (1 to
   // ABSOLUTE_MAX_POINTERS)
@@ -39,9 +39,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
 
   // Determine the maximum allocation size for this run (1 to
   // ABSOLUTE_MAX_ALLOC)
-  size_t active_max_alloc = ((Data[2] << 8) | Data[3]) % ABSOLUTE_MAX_ALLOC + 1;
+  size_t active_max_alloc =
+      ((Data[2] << 16) | (Data[3] << 8) | Data[4]) % ABSOLUTE_MAX_ALLOC + 1;
 
-  size_t offset = 4;
+  size_t offset = 5;
 
   allo_t a;
   allo_t child;
@@ -121,6 +122,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     is_complex = 4;
     break;
   }
+  case 6: // Gen Allocator
+    if (make_gen_allocator(&a) != ALLO_OK)
+      return 0;
+    is_complex = 0;
+    break;
   default:
     return 0;
   }

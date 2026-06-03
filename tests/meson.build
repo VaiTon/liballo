@@ -13,6 +13,7 @@ hosted_test_cases = freestanding_test_cases + [
     'test_calloc',
     'test_mtx',
     'test_c',
+    'test_gen',
 ]
 
 if opt_freestanding
