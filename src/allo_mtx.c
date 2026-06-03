@@ -38,7 +38,12 @@ static void allo_mtx_destroy(allo_t *self) {
 
 allo_contains_t allo_mtx_contains(allo_t *self, const void *ptr) {
   allo_mtx_ctx_t *ctx = (allo_mtx_ctx_t *)self->_state;
-  return allo_contains(ctx->target, ptr);
+
+  mtx_lock(&ctx->mutex);
+  allo_contains_t result = allo_contains(ctx->target, ptr);
+  mtx_unlock(&ctx->mutex);
+
+  return result;
 }
 
 allo_error_t make_mtx_allocator(allo_t *out, allo_t *target) {
