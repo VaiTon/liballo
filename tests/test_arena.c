@@ -50,9 +50,40 @@ void test_arena_validation(void) {
   printf("Arena validation tests passed!\n");
 }
 
+void test_arena_regression(void) {
+  allo_t child;
+  ALLO_ALIGNED_BUF(buffer, 8192);
+  assert(make_fixed_buf_allocator(&child, buffer, sizeof(buffer)) == ALLO_OK);
+
+  allo_t a;
+  assert(make_arena_allocator(&a, &child, 1024) == ALLO_OK);
+
+  // 1. Allocate a small block
+  void *p1 = allo_alloc(&a, 100);
+  assert(p1 != NULL);
+
+  // 2. Allocate a large block (size > block_size)
+  void *p2 = allo_alloc(&a, 2000);
+  assert(p2 != NULL);
+
+  // 3. Allocate a small block that triggers the creation of a new
+  // standard-sized block.
+  void *p3 = allo_alloc(&a, 1000);
+  assert(p3 != NULL);
+
+  // Check that all allocated blocks are correctly tracked in the allocator
+  assert(allo_contains(&a, p1) == ALLO_CONTAINS_YES);
+  assert(allo_contains(&a, p2) == ALLO_CONTAINS_YES);
+  assert(allo_contains(&a, p3) == ALLO_CONTAINS_YES);
+
+  allo_destroy(&a);
+  printf("Arena regression test passed\n");
+}
+
 int main(void) {
   test_arena_validation();
   test_arena_allocator();
   test_arena_stress();
+  test_arena_regression();
   return 0;
 }

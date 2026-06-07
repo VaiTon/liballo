@@ -84,6 +84,7 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
     arena_block_t *block = new_arena_block(ctx->child, ctx->block_size);
     if (!block)
       return NULL;
+    block->next = ctx->current->next;
     ctx->current->next = block;
     ctx->current = block;
     aligned_offset = 0; // New block starts at offset 0
