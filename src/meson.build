@@ -24,6 +24,16 @@ if not opt_freestanding
         c_args: ['-D_GNU_SOURCE'],
         install: true,
     )
+
+    pkg = import('pkgconfig')
+    pkg.generate(
+        libraries: liballo_lib,
+        subdirs: ['.'],
+        version: meson.project_version(),
+        name: 'liballo',
+        filebase: 'liballo',
+        description: 'Lightweight, extensible memory allocator library',
+    )
 else
     liballo_static = static_library(
         'allo_static',
@@ -48,3 +58,4 @@ else
         include_directories: liballo_headers,
     )
 endif
+

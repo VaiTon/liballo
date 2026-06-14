@@ -5,22 +5,17 @@
 ## Usage Example
 
 ```c
-#include "allo.h"
+#include <liballo/allo.h>
 
-int main() {
+int main(void) {
     // Create a growable arena backed by the standard C allocator
     allo_t c_alloc;
     make_c_allocator(&c_alloc);
     allo_t arena;
     make_arena_allocator(&arena, &c_alloc, 4096);
 
-    // Allocate memory
     void *ptr = allo_alloc(&arena, 128);
-
-    // Reallocate
     ptr = allo_realloc(&arena, ptr, 128, 256);
-
-    // Arena reclaims everything at once
     allo_destroy(&arena);
     return 0;
 }
