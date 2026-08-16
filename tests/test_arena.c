@@ -10,6 +10,9 @@ void test_arena_allocator(void) {
   void *p1 = allo_alloc(&a, 100);
   assert(p1 != NULL);
 
+  // Oversized requests must fail without overflowing the block header size.
+  assert(allo_alloc(&a, SIZE_MAX) == NULL);
+
   void *p2 = allo_alloc(&a, 2000); // Should trigger new block
   assert(p2 != NULL);
 

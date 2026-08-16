@@ -117,6 +117,17 @@ void test_buddy_validation(void) {
   assert(make_buddy_allocator(NULL, &child, NULL, 1024) == ALLO_ERR_INVAL);
   assert(make_buddy_allocator(&a, NULL, NULL, 1024) == ALLO_ERR_INVAL);
   assert(make_buddy_allocator(&a, &child, NULL, 0) == ALLO_ERR_INVAL);
+  assert(make_buddy_allocator(&a, &child, NULL, 16) == ALLO_ERR_INVAL);
+
+  ALLO_ALIGNED_BUF(external, 1024);
+  assert(make_buddy_allocator(&a, &child, external, 1000) == ALLO_ERR_INVAL);
+
+#ifndef ALLO_FREESTANDING
+  allo_t c;
+  assert(make_c_allocator(&c) == ALLO_OK);
+  assert(make_buddy_allocator(&a, &c, NULL, SIZE_MAX) == ALLO_ERR_INVAL);
+  allo_destroy(&c);
+#endif
 
   allo_destroy(&child);
   printf("Buddy validation tests passed!\n");

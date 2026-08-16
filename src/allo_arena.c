@@ -47,7 +47,11 @@ allo_contains_t arena_contains_fn(allo_t *self, const void *ptr) {
 }
 
 static arena_block_t *new_arena_block(allo_t *child, size_t size) {
-  arena_block_t *block = allo_alloc(child, sizeof(arena_block_t) + size);
+  size_t allocation_size;
+  if (!allo_size_add(sizeof(arena_block_t), size, &allocation_size)) {
+    return NULL;
+  }
+  arena_block_t *block = allo_alloc(child, allocation_size);
   if (!block)
     return NULL;
   block->next = NULL;
@@ -63,7 +67,10 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
   }
   arena_context_t *ctx = (arena_context_t *)self->_state;
 
-  size_t aligned_offset = allo_align_up(ctx->current->offset, 8);
+  size_t aligned_offset;
+  if (!allo_align_up_checked(ctx->current->offset, 8, &aligned_offset)) {
+    return NULL;
+  }
 
   if (size > ctx->block_size) {
     // Large allocation, create a dedicated block
@@ -79,7 +86,8 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
     return ptr;
   }
 
-  if (aligned_offset + size > ctx->current->size) {
+  if (aligned_offset > ctx->current->size ||
+      size > ctx->current->size - aligned_offset) {
     // Current block is full, create a new one
     arena_block_t *block = new_arena_block(ctx->child, ctx->block_size);
     if (!block)
@@ -113,7 +121,9 @@ void *arena_realloc_fn(allo_t *self, void *ptr, size_t old_size,
     size_t offset_without_this = (size_t)((char *)ptr - (char *)block_start);
 
     // 3. The new size still fits within the bounds of the current block.
-    bool fits_in_current = offset_without_this + new_size <= ctx->current->size;
+    bool fits_in_current =
+        offset_without_this <= ctx->current->size &&
+        new_size <= ctx->current->size - offset_without_this;
 
     if (fits_in_current) {
       // Update the offset to reflect the new size.

@@ -101,6 +101,10 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
 
 /*
  * A fallback allocator that tries a primary allocator first, then a secondary.
+ * The primary allocator must provide definitive containment results (its
+ * `_contains` callback must never return ALLO_CONTAINS_UNKNOWN). This is
+ * required to route frees and reallocations without passing a fallback-owned
+ * pointer to the primary allocator.
  */
 allo_error_t make_fallback_allocator(allo_t *out, allo_t *primary,
                                      allo_t *fallback);

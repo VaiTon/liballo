@@ -49,7 +49,7 @@ jobs:
           python3 -m pip install meson
 
       - name: Configure build
-        run: meson setup build-freestanding --wipe --reconfigure -Dbuildtype=debug
+        run: meson setup build-freestanding --wipe --reconfigure -Dfreestanding=true -Dbenchmarks=false -Dexamples=false -Dbuildtype=debug
 
       - name: Build tests
         run: ninja -C build-freestanding

@@ -18,5 +18,5 @@ bench_allocators_exe = executable(
 benchmark(
     'bench_allocators',
     bench_allocators_exe,
-    timeout: 60,
+    timeout: 300,
 )

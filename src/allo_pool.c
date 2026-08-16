@@ -21,7 +21,10 @@ static_assert(sizeof(pool_context_t) <= ALLO_MAX_ALLOCATOR_CTX_SIZE,
 
 allo_contains_t pool_contains_fn(allo_t *self, const void *ptr) {
   pool_context_t *ctx = (pool_context_t *)self->_state;
-  size_t total_size = ctx->block_size * ctx->total_blocks;
+  size_t total_size;
+  if (!allo_size_mul(ctx->block_size, ctx->total_blocks, &total_size)) {
+    return ALLO_CONTAINS_NO;
+  }
   return (ptr >= ctx->buffer && (char *)ptr < (char *)ctx->buffer + total_size)
              ? ALLO_CONTAINS_YES
              : ALLO_CONTAINS_NO;
@@ -99,19 +102,26 @@ allo_error_t make_pool_allocator(allo_t *out, allo_t *child, void *buffer,
   size_t min_size = sizeof(pool_free_node_t);
   size_t actual_block_size = block_size < min_size ? min_size : block_size;
   // Ensure block_size is aligned to pointer size
-  ctx->block_size = allo_align_up(actual_block_size, 8);
+  if (!allo_align_up_checked(actual_block_size, 8, &ctx->block_size)) {
+    return ALLO_ERR_INVAL;
+  }
   ctx->total_blocks = total_blocks;
   ctx->own_buffer = (buffer == NULL);
 
+  size_t total_size;
+  if (!allo_size_mul(ctx->block_size, total_blocks, &total_size)) {
+    return ALLO_ERR_INVAL;
+  }
+
   if (ctx->own_buffer) {
-    ctx->buffer = allo_alloc(ctx->child, ctx->block_size * total_blocks);
+    ctx->buffer = allo_alloc(ctx->child, total_size);
     if (!ctx->buffer)
       return ALLO_ERR_NOMEM;
   } else {
     ctx->buffer = buffer;
   }
 
-  ALLOC_POISON(ctx->buffer, ctx->block_size * total_blocks);
+  ALLOC_POISON(ctx->buffer, total_size);
 
   // Initialize free list
   ctx->free_list = (pool_free_node_t *)ctx->buffer;

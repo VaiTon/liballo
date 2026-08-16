@@ -59,6 +59,10 @@ void test_pool_validation(void) {
   assert(make_pool_allocator(&pool, NULL, NULL, 64, 10) == ALLO_ERR_INVAL);
   assert(make_pool_allocator(&pool, &child, NULL, 0, 10) == ALLO_ERR_INVAL);
   assert(make_pool_allocator(&pool, &child, NULL, 64, 0) == ALLO_ERR_INVAL);
+  assert(make_pool_allocator(&pool, &child, buffer, SIZE_MAX, 2) ==
+         ALLO_ERR_INVAL);
+  assert(make_pool_allocator(&pool, &child, buffer, 64, SIZE_MAX) ==
+         ALLO_ERR_INVAL);
 
   allo_destroy(&child);
   printf("Pool validation tests passed!\n");

@@ -40,7 +40,7 @@ else
         liballo_base_sources,
         include_directories: liballo_headers,
         link_args: ['-nostdlib'],
-        c_args: ['-DALLO_FREESTANDING', '-ffreestanding'],
+        c_args: ['-DALLO_FREESTANDING', '-ffreestanding', '-fno-builtin'],
         override_options: ['b_sanitize=none', 'b_coverage=false'],
         install: false,
     )
@@ -58,4 +58,3 @@ else
         include_directories: liballo_headers,
     )
 endif
-

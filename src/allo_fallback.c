@@ -15,6 +15,11 @@ static void *fallback_alloc_fn(allo_t *self, size_t size) {
   void *ptr = allo_alloc(ctx->primary, size);
   if (!ptr) {
     ptr = allo_alloc(ctx->fallback, size);
+  } else if (allo_contains(ctx->primary, ptr) != ALLO_CONTAINS_YES) {
+    /* The pointer cannot be safely routed later if primary does not
+     * positively identify it.  Do not expose an unfreeable allocation. */
+    allo_free(ctx->primary, ptr, size);
+    return NULL;
   }
   return ptr;
 }
@@ -27,16 +32,14 @@ static void *fallback_realloc_fn(allo_t *self, void *ptr, size_t old_size,
   fallback_context_t *ctx = (fallback_context_t *)self->_state;
 
   allo_contains_t primary_contains = allo_contains(ctx->primary, ptr);
-  if (primary_contains == ALLO_CONTAINS_YES ||
-      primary_contains == ALLO_CONTAINS_UNKNOWN) {
+  if (primary_contains == ALLO_CONTAINS_YES) {
     void *new_ptr = allo_realloc(ctx->primary, ptr, old_size, new_size);
     if (new_ptr) {
       return new_ptr;
     }
 
-    // If it was definitely in primary, we must move it to fallback manually.
-    // If it was UNKNOWN, it might have been in primary but realloc failed,
-    // so we try fallback as well.
+    // If it was definitely in primary, move it to fallback manually when the
+    // primary allocator cannot satisfy the resize.
     new_ptr = allo_alloc(ctx->fallback, new_size);
     if (!new_ptr) {
       return NULL;
@@ -56,10 +59,9 @@ static void fallback_free_fn(allo_t *self, void *ptr, size_t size) {
     return;
   fallback_context_t *ctx = (fallback_context_t *)self->_state;
   allo_contains_t primary_contains = allo_contains(ctx->primary, ptr);
-  if (primary_contains == ALLO_CONTAINS_YES ||
-      primary_contains == ALLO_CONTAINS_UNKNOWN) {
+  if (primary_contains == ALLO_CONTAINS_YES) {
     allo_free(ctx->primary, ptr, size);
-  } else {
+  } else if (primary_contains == ALLO_CONTAINS_NO) {
     allo_free(ctx->fallback, ptr, size);
   }
 }
@@ -79,7 +81,10 @@ allo_contains_t fallback_contains_fn(allo_t *self, const void *ptr) {
 
 allo_error_t make_fallback_allocator(allo_t *out, allo_t *primary,
                                      allo_t *fallback) {
-  if (!out || !primary || !fallback) {
+  /* A fallback must be able to identify every pointer served by primary.
+   * Without this guarantee, a pointer that spilled to fallback could later be
+   * passed to primary's free/realloc implementation. */
+  if (!out || !primary || !fallback || !primary->_contains) {
     return ALLO_ERR_INVAL;
   }
 

@@ -268,7 +268,11 @@ void buddy_destroy_fn(allo_t *self) {
 
 allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
                                   size_t size) {
-  if (!out || !child || size == 0) {
+  if (!out || !child || size < 32) {
+    return ALLO_ERR_INVAL;
+  }
+
+  if (buffer && !ALLO_IS_ALIGNED(buffer, 8)) {
     return ALLO_ERR_INVAL;
   }
 
@@ -282,8 +286,15 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
   ctx->child = child;
 
   size_t actual_size = 1;
-  while (actual_size < size)
+  while (actual_size < size) {
+    if (actual_size > (size_t)-1 / 2) {
+      return ALLO_ERR_INVAL;
+    }
     actual_size <<= 1;
+  }
+  if (buffer && actual_size != size) {
+    return ALLO_ERR_INVAL;
+  }
   ctx->total_size = actual_size;
   ctx->min_block_size = 32;
   ctx->max_order = get_order(ctx->total_size);

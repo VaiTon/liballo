@@ -10,6 +10,16 @@ int main(void) {
   assert(make_pool_allocator(&primary, NULL, pool_buf, 64, 1) == ALLO_OK);
   // Fallback: Fixed buffer
   assert(make_fixed_buf_allocator(&fallback, fallback_buf, 256) == ALLO_OK);
+
+#ifndef ALLO_FREESTANDING
+  // A primary without definitive containment cannot be routed safely.
+  allo_t libc_primary;
+  assert(make_c_allocator(&libc_primary) == ALLO_OK);
+  assert(make_fallback_allocator(&fb, &libc_primary, &fallback) ==
+         ALLO_ERR_INVAL);
+  allo_destroy(&libc_primary);
+#endif
+
   assert(make_fallback_allocator(&fb, &primary, &fallback) == ALLO_OK);
 
   // 1. First allocation fits in primary

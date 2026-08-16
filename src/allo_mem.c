@@ -21,4 +21,16 @@ void *allo_memset(void *s, int c, size_t n) {
   }
   return s;
 }
+
+/* Some freestanding compilers lower aggregate initialization and structure
+ * copies to the conventional libc symbol names even with -ffreestanding.
+ * Provide those symbols locally so the static library remains self-contained.
+ */
+void *memcpy(void *dest, const void *src, size_t n) {
+  return allo_memcpy(dest, src, n);
+}
+
+void *memset(void *s, int c, size_t n) {
+  return allo_memset(s, c, n);
+}
 #endif

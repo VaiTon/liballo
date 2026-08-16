@@ -17,14 +17,26 @@
 
 #define TORTURE_COUNT 256
 #define RACE_COUNT 512
+#define GEN_RACE_COUNT 32
 #define REPEAT_COUNT 1000
 #define FRAG_COUNT 512
 #define STRIDE_COUNT 128
 #define RAMP_COUNT 32
 #define BATCH_SIZES 8
+#define ALLOC_BATCH_COUNT 32
+#define ALLOC_BATCH_REPETITIONS 8
+#define BUMP_BATCH_COUNT 1024
+#define BATCH_REPETITIONS 32
+#define WORKLOAD_REPETITIONS 4
+#define STRIDE_REPETITIONS 8
+#define LIFECYCLE_REPETITIONS 128
+#define BUDDY_TORTURE_REPETITIONS 16
+#define BUDDY_FRAG_REPETITIONS 8
 
-#define ARENA_SIZE (256 * 1024UL * 1024UL)
-#define BUFFER_SIZE (256 * 1024UL * 1024UL)
+// The largest bump batch is 1024 * 64 KiB = 64 MiB.  Keep headroom for each
+// sample while avoiding the unnecessary 256 MiB backing stores used before.
+#define ARENA_SIZE (128 * 1024UL * 1024UL)
+#define BUFFER_SIZE (128 * 1024UL * 1024UL)
 #define BUDDY_TOTAL_SIZE (64 * 1024UL * 1024UL)
 #define POOL_BLOCK_SIZE 64UL
 #define POOL_NUM_BLOCKS 10000
@@ -113,7 +125,6 @@ struct buffer_fixture {
 };
 UBENCH_F_SETUP(buffer_fixture) {
   ubench_fixture->buf = malloc(BUFFER_SIZE);
-  memset(ubench_fixture->buf, 0, BUFFER_SIZE);
   make_fixed_buf_allocator(&ubench_fixture->a, ubench_fixture->buf,
                            BUFFER_SIZE);
 }
@@ -264,18 +275,39 @@ static void init_workload_sizes(void) {
 // Macro families for repetitive benchmark definitions
 // ============================================================================
 
-// Alloc-only (no free): tests pure allocation throughput for bump allocators.
-#define DEFINE_ALLOC_BENCHMARK(FIXTURE, NAME, SIZE)                            \
-  UBENCH_F(FIXTURE, alloc_only_##NAME) {                                       \
-    void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                          \
-    ubench_do_nothing(ptr);                                                    \
+// Batched allocation throughput. Each sample frees what it allocated so
+// stateful allocators cannot exhaust while ubench gathers samples.
+#define DEFINE_ALLOC_BENCHMARK_WITH_REPETITIONS(FIXTURE, NAME, SIZE, REPS)     \
+  UBENCH_F(FIXTURE, alloc_batch_##NAME) {                                      \
+    void *ptrs[ALLOC_BATCH_COUNT];                                             \
+    for (int rep = 0; rep < (REPS); rep++) {                                   \
+      for (int i = 0; i < ALLOC_BATCH_COUNT; i++) {                            \
+        ptrs[i] = allo_alloc(&ubench_fixture->a, SIZE);                        \
+        if (!ptrs[i])                                                           \
+          UBENCH_FAIL();                                                       \
+        ubench_do_nothing(ptrs[i]);                                            \
+      }                                                                        \
+      for (int i = 0; i < ALLOC_BATCH_COUNT; i++)                              \
+        allo_free(&ubench_fixture->a, ptrs[i], SIZE);                          \
+    }                                                                          \
   }
 
-// Alloc + free loop: the bread-and-butter benchmark.
+#define DEFINE_ALLOC_BENCHMARK(FIXTURE, NAME, SIZE)                            \
+  DEFINE_ALLOC_BENCHMARK_WITH_REPETITIONS(FIXTURE, NAME, SIZE,                 \
+                                          ALLOC_BATCH_REPETITIONS)
+
+#define BENCHMARK_CHECK_PTR(PTR)                                               \
+  do {                                                                         \
+    if (!(PTR))                                                                \
+      UBENCH_FAIL();                                                           \
+  } while (0)
+
+// Repeated allocation/free throughput benchmark.
 #define DEFINE_ALLOC_FREE_BENCHMARK(FIXTURE, NAME, SIZE)                       \
   UBENCH_F(FIXTURE, alloc_free_##NAME) {                                       \
     for (int i = 0; i < REPEAT_COUNT; i++) {                                   \
-      void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                        \
+      void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                       \
+      BENCHMARK_CHECK_PTR(ptr);                                                \
       ubench_do_nothing(ptr);                                                  \
       allo_free(&ubench_fixture->a, ptr, SIZE);                                \
     }                                                                          \
@@ -286,6 +318,7 @@ static void init_workload_sizes(void) {
   UBENCH_F(FIXTURE, calloc_free_##NAME) {                                      \
     for (int i = 0; i < REPEAT_COUNT; i++) {                                   \
       void *ptr = allo_calloc(&ubench_fixture->a, 1, SIZE);                    \
+      BENCHMARK_CHECK_PTR(ptr);                                                \
       ubench_do_nothing(ptr);                                                  \
       allo_free(&ubench_fixture->a, ptr, SIZE);                                \
     }                                                                          \
@@ -297,6 +330,54 @@ static void init_workload_sizes(void) {
   DEFINE_ALLOC_BENCHMARK(FIXTURE, 1kb, 1024)                                   \
   DEFINE_ALLOC_BENCHMARK(FIXTURE, 64kb, 64 * 1024)
 
+#define DEFINE_ALLOC_BENCHMARKS_WITH_REPETITIONS(FIXTURE, REPS)               \
+  DEFINE_ALLOC_BENCHMARK_WITH_REPETITIONS(FIXTURE, 8b, 8, REPS)                \
+  DEFINE_ALLOC_BENCHMARK_WITH_REPETITIONS(FIXTURE, 1kb, 1024, REPS)            \
+  DEFINE_ALLOC_BENCHMARK_WITH_REPETITIONS(FIXTURE, 64kb, 64 * 1024, REPS)
+
+// Bump allocators do not reclaim storage from allo_free().  Reset them after
+// each measured batch so repeated ubench samples measure the allocator rather
+// than eventually exhausting the backing arena/buffer.
+#define DEFINE_ARENA_ALLOC_BATCH(NAME, SIZE)                                   \
+  UBENCH_F(arena_fixture, alloc_batch_##NAME) {                                \
+    for (int rep = 0; rep < ALLOC_BATCH_REPETITIONS; rep++) {                  \
+      for (int i = 0; i < ALLOC_BATCH_COUNT; i++) {                            \
+        void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                      \
+        BENCHMARK_CHECK_PTR(ptr);                                               \
+        ubench_do_nothing(ptr);                                                 \
+      }                                                                        \
+      allo_destroy(&ubench_fixture->a);                                         \
+      if (make_arena_allocator(&ubench_fixture->a, &ubench_fixture->child,     \
+                               ARENA_SIZE) != ALLO_OK)                          \
+        UBENCH_FAIL();                                                          \
+    }                                                                           \
+  }
+
+#define DEFINE_BUFFER_ALLOC_BATCH(NAME, SIZE)                                  \
+  UBENCH_F(buffer_fixture, alloc_batch_##NAME) {                               \
+    for (int rep = 0; rep < ALLOC_BATCH_REPETITIONS; rep++) {                  \
+      for (int i = 0; i < ALLOC_BATCH_COUNT; i++) {                            \
+        void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                      \
+        BENCHMARK_CHECK_PTR(ptr);                                               \
+        ubench_do_nothing(ptr);                                                 \
+      }                                                                        \
+      allo_destroy(&ubench_fixture->a);                                         \
+      if (make_fixed_buf_allocator(&ubench_fixture->a, ubench_fixture->buf,    \
+                                   BUFFER_SIZE) != ALLO_OK)                      \
+        UBENCH_FAIL();                                                          \
+    }                                                                           \
+  }
+
+#define DEFINE_ARENA_ALLOC_BATCHES()                                           \
+  DEFINE_ARENA_ALLOC_BATCH(8b, 8)                                               \
+  DEFINE_ARENA_ALLOC_BATCH(1kb, 1024)                                           \
+  DEFINE_ARENA_ALLOC_BATCH(64kb, 64 * 1024)
+
+#define DEFINE_BUFFER_ALLOC_BATCHES()                                          \
+  DEFINE_BUFFER_ALLOC_BATCH(8b, 8)                                              \
+  DEFINE_BUFFER_ALLOC_BATCH(1kb, 1024)                                          \
+  DEFINE_BUFFER_ALLOC_BATCH(64kb, 64 * 1024)
+
 #define DEFINE_ALLOC_FREE_BENCHMARKS(FIXTURE, NAME)                            \
   DEFINE_ALLOC_FREE_BENCHMARK(FIXTURE, 8b, 8)                                  \
   DEFINE_ALLOC_FREE_BENCHMARK(FIXTURE, 1kb, 1024)                              \
@@ -306,12 +387,34 @@ static void init_workload_sizes(void) {
 #define DEFINE_RACE_BENCHMARK(NAME, FIXTURE)                                   \
   UBENCH_F(FIXTURE, race_##NAME) {                                             \
     void *ptrs[RACE_COUNT];                                                    \
-    for (int i = 0; i < RACE_COUNT; i++) {                                     \
-      ptrs[i] = allo_alloc(&ubench_fixture->a, global_race_state.sizes[i]);    \
-      ubench_do_nothing(ptrs[i]);                                              \
+    for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {                      \
+      for (int i = 0; i < RACE_COUNT; i++) {                                   \
+        ptrs[i] = allo_alloc(&ubench_fixture->a,                               \
+                             global_race_state.sizes[i]);                     \
+        BENCHMARK_CHECK_PTR(ptrs[i]);                                          \
+        ubench_do_nothing(ptrs[i]);                                            \
+      }                                                                        \
+      for (int i = 0; i < RACE_COUNT; i++)                                     \
+        allo_free(&ubench_fixture->a, ptrs[i], global_race_state.sizes[i]);    \
     }                                                                          \
-    for (int i = 0; i < RACE_COUNT; i++)                                       \
-      allo_free(&ubench_fixture->a, ptrs[i], global_race_state.sizes[i]);      \
+  }
+
+// The general allocator's largest fixed pool contains 32 blocks.  Keep this
+// bulk race within that bound; the libc/buddy variants retain the larger race
+// to exercise their scalable backing stores.
+#define DEFINE_GEN_RACE_BENCHMARK()                                            \
+  UBENCH_F(gen_fixture, race_gen) {                                            \
+    void *ptrs[GEN_RACE_COUNT];                                                \
+    for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {                      \
+      for (int i = 0; i < GEN_RACE_COUNT; i++) {                               \
+        ptrs[i] = allo_alloc(&ubench_fixture->a,                               \
+                             global_race_state.sizes[i]);                     \
+        BENCHMARK_CHECK_PTR(ptrs[i]);                                          \
+        ubench_do_nothing(ptrs[i]);                                            \
+      }                                                                        \
+      for (int i = 0; i < GEN_RACE_COUNT; i++)                                 \
+        allo_free(&ubench_fixture->a, ptrs[i], global_race_state.sizes[i]);    \
+    }                                                                          \
   }
 
 // ============================================================================
@@ -319,10 +422,10 @@ static void init_workload_sizes(void) {
 // ============================================================================
 
 DEFINE_ALLOC_BENCHMARKS(libc_fixture, libc)
-DEFINE_ALLOC_BENCHMARKS(arena_fixture, arena)
-DEFINE_ALLOC_BENCHMARKS(buffer_fixture, buffer)
+DEFINE_ARENA_ALLOC_BATCHES()
+DEFINE_BUFFER_ALLOC_BATCHES()
 DEFINE_ALLOC_BENCHMARKS(gen_fixture, gen)
-DEFINE_ALLOC_BENCHMARKS(buddy_fixture, buddy)
+DEFINE_ALLOC_BENCHMARKS_WITH_REPETITIONS(buddy_fixture, 128)
 
 DEFINE_ALLOC_FREE_BENCHMARKS(libc_fixture, libc)
 DEFINE_ALLOC_FREE_BENCHMARKS(buddy_fixture, buddy)
@@ -335,9 +438,12 @@ DEFINE_CALLOC_BENCHMARK(1kb, buddy_fixture, 1024)
 UBENCH_F(libc_fixture, realloc_move) {
   for (int i = 0; i < REPEAT_COUNT; i++) {
     void *ptr = allo_alloc(&ubench_fixture->a, 1024);
+    BENCHMARK_CHECK_PTR(ptr);
     ptr = allo_realloc(&ubench_fixture->a, ptr, 1024, 2048);
+    BENCHMARK_CHECK_PTR(ptr);
     ubench_do_nothing(ptr);
     ptr = allo_realloc(&ubench_fixture->a, ptr, 2048, 1024);
+    BENCHMARK_CHECK_PTR(ptr);
     ubench_do_nothing(ptr);
     allo_free(&ubench_fixture->a, ptr, 1024);
   }
@@ -346,7 +452,9 @@ UBENCH_F(libc_fixture, realloc_move) {
 UBENCH_F(arena_fixture, realloc_inplace) {
   for (int i = 0; i < REPEAT_COUNT; i++) {
     void *ptr = allo_alloc(&ubench_fixture->a, 8);
+    BENCHMARK_CHECK_PTR(ptr);
     ptr = allo_realloc(&ubench_fixture->a, ptr, 8, 16);
+    BENCHMARK_CHECK_PTR(ptr);
     ubench_do_nothing(ptr);
   }
 }
@@ -354,9 +462,12 @@ UBENCH_F(arena_fixture, realloc_inplace) {
 UBENCH_F(buddy_fixture, realloc_move) {
   for (int i = 0; i < REPEAT_COUNT; i++) {
     void *ptr = allo_alloc(&ubench_fixture->a, 1024);
+    BENCHMARK_CHECK_PTR(ptr);
     ptr = allo_realloc(&ubench_fixture->a, ptr, 1024, 2048);
+    BENCHMARK_CHECK_PTR(ptr);
     ubench_do_nothing(ptr);
     ptr = allo_realloc(&ubench_fixture->a, ptr, 2048, 1024);
+    BENCHMARK_CHECK_PTR(ptr);
     ubench_do_nothing(ptr);
     allo_free(&ubench_fixture->a, ptr, 1024);
   }
@@ -365,29 +476,32 @@ UBENCH_F(buddy_fixture, realloc_move) {
 UBENCH_F(buffer_fixture, realloc_inplace) {
   for (int i = 0; i < REPEAT_COUNT; i++) {
     void *ptr = allo_alloc(&ubench_fixture->a, 8);
+    BENCHMARK_CHECK_PTR(ptr);
     ptr = allo_realloc(&ubench_fixture->a, ptr, 8, 16);
+    BENCHMARK_CHECK_PTR(ptr);
     ubench_do_nothing(ptr);
   }
 }
 
 UBENCH_F(buddy_fixture, torture_mix) {
   void *ptrs[TORTURE_COUNT];
-  for (int i = 0; i < TORTURE_COUNT; i++) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, ubench_fixture->sizes[i]);
-    ubench_do_nothing(ptrs[i]);
-  }
-  for (int i = 0; i < TORTURE_COUNT; i += 2) {
-    if (ptrs[i]) {
+  for (int rep = 0; rep < BUDDY_TORTURE_REPETITIONS; rep++) {
+    for (int i = 0; i < TORTURE_COUNT; i++) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a, ubench_fixture->sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < TORTURE_COUNT; i += 2) {
       allo_free(&ubench_fixture->a, ptrs[i], ubench_fixture->sizes[i]);
       ptrs[i] = NULL;
     }
-  }
-  for (int i = 0; i < TORTURE_COUNT; i += 2) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, ubench_fixture->realloc_sizes[i]);
-    ubench_do_nothing(ptrs[i]);
-  }
-  for (int i = 0; i < TORTURE_COUNT; i++) {
-    if (ptrs[i]) {
+    for (int i = 0; i < TORTURE_COUNT; i += 2) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a,
+                           ubench_fixture->realloc_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < TORTURE_COUNT; i++) {
       size_t sz = (i % 2 == 0) ? ubench_fixture->realloc_sizes[i]
                                : ubench_fixture->sizes[i];
       allo_free(&ubench_fixture->a, ptrs[i], sz);
@@ -397,7 +511,7 @@ UBENCH_F(buddy_fixture, torture_mix) {
 
 DEFINE_RACE_BENCHMARK(libc, libc_fixture)
 DEFINE_RACE_BENCHMARK(buddy, buddy_fixture)
-DEFINE_RACE_BENCHMARK(gen, gen_fixture)
+DEFINE_GEN_RACE_BENCHMARK()
 
 UBENCH_F(page_fixture, single_page_alloc_free) {
   for (int i = 0; i < REPEAT_COUNT; i++) {
@@ -409,7 +523,9 @@ UBENCH_F(page_fixture, single_page_alloc_free) {
 
 #define DEFINE_LIFECYCLE_BENCHMARK(NAME, ...)                                  \
   UBENCH(lifecycle, NAME) {                                                    \
-    __VA_ARGS__                                                                \
+    for (int rep = 0; rep < LIFECYCLE_REPETITIONS; rep++) {                     \
+      __VA_ARGS__                                                              \
+    }                                                                          \
   }
 
 DEFINE_LIFECYCLE_BENCHMARK(libc, {
@@ -473,6 +589,7 @@ UBENCH_F(fallback_fixture, slow_path_1kb) {
   UBENCH_F(FIXTURE, size_sweep_##LABEL) {                                      \
     for (int i = 0; i < REPEAT_COUNT; i++) {                                   \
       void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                        \
+      BENCHMARK_CHECK_PTR(ptr);                                                \
       ubench_do_nothing(ptr);                                                  \
       allo_free(&ubench_fixture->a, ptr, SIZE);                                \
     }                                                                          \
@@ -498,32 +615,68 @@ DEFINE_ALL_SIZE_SWEEPS(libc_fixture)
 DEFINE_ALL_SIZE_SWEEPS(buddy_fixture)
 DEFINE_ALL_SIZE_SWEEPS(gen_fixture)
 
-// Arena and buffer are bump allocators: only alloc is meaningful here.
-// We report alloc_only so the graphs stay comparable (free is a no-op).
-#define DEFINE_BUMP_SIZE_SWEEP(FIXTURE, SIZE, LABEL)                           \
-  UBENCH_F(FIXTURE, size_sweep_##LABEL) {                                      \
-    void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                          \
-    ubench_do_nothing(ptr);                                                    \
+// Arena and buffer are bump allocators. Batch allocations to get above timer
+// resolution, then reset the fixture before the next ubench sample.
+#define DEFINE_ARENA_BUMP_SIZE_SWEEP(SIZE, LABEL)                              \
+  UBENCH_F(arena_fixture, size_sweep_##LABEL) {                                 \
+    for (int i = 0; i < BUMP_BATCH_COUNT; i++) {                                \
+      void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                        \
+      BENCHMARK_CHECK_PTR(ptr);                                                \
+      ubench_do_nothing(ptr);                                                  \
+    }                                                                          \
+    allo_destroy(&ubench_fixture->a);                                          \
+    if (make_arena_allocator(&ubench_fixture->a, &ubench_fixture->child,       \
+                             ARENA_SIZE) != ALLO_OK)                           \
+      UBENCH_FAIL();                                                           \
   }
 
-#define DEFINE_ALL_BUMP_SIZE_SWEEPS(FIXTURE)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 8, 8b)                                       \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 16, 16b)                                     \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 32, 32b)                                     \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 64, 64b)                                     \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 128, 128b)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 256, 256b)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 512, 512b)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 1024, 1kb)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 2048, 2kb)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 4096, 4kb)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 8192, 8kb)                                   \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 16384, 16kb)                                 \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 32768, 32kb)                                 \
-  DEFINE_BUMP_SIZE_SWEEP(FIXTURE, 65536, 64kb)
+#define DEFINE_BUFFER_BUMP_SIZE_SWEEP(SIZE, LABEL)                             \
+  UBENCH_F(buffer_fixture, size_sweep_##LABEL) {                                \
+    for (int i = 0; i < BUMP_BATCH_COUNT; i++) {                                \
+      void *ptr = allo_alloc(&ubench_fixture->a, SIZE);                        \
+      BENCHMARK_CHECK_PTR(ptr);                                                \
+      ubench_do_nothing(ptr);                                                  \
+    }                                                                          \
+    allo_destroy(&ubench_fixture->a);                                          \
+    if (make_fixed_buf_allocator(&ubench_fixture->a, ubench_fixture->buf,      \
+                                 BUFFER_SIZE) != ALLO_OK)                       \
+      UBENCH_FAIL();                                                           \
+  }
 
-DEFINE_ALL_BUMP_SIZE_SWEEPS(arena_fixture)
-DEFINE_ALL_BUMP_SIZE_SWEEPS(buffer_fixture)
+#define DEFINE_ALL_ARENA_BUMP_SWEEPS()                                         \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(8, 8b)                                          \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(16, 16b)                                        \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(32, 32b)                                        \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(64, 64b)                                        \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(128, 128b)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(256, 256b)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(512, 512b)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(1024, 1kb)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(2048, 2kb)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(4096, 4kb)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(8192, 8kb)                                      \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(16384, 16kb)                                    \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(32768, 32kb)                                    \
+  DEFINE_ARENA_BUMP_SIZE_SWEEP(65536, 64kb)
+
+#define DEFINE_ALL_BUFFER_BUMP_SWEEPS()                                        \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(8, 8b)                                         \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(16, 16b)                                       \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(32, 32b)                                       \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(64, 64b)                                       \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(128, 128b)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(256, 256b)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(512, 512b)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(1024, 1kb)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(2048, 2kb)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(4096, 4kb)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(8192, 8kb)                                     \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(16384, 16kb)                                   \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(32768, 32kb)                                   \
+  DEFINE_BUFFER_BUMP_SIZE_SWEEP(65536, 64kb)
+
+DEFINE_ALL_ARENA_BUMP_SWEEPS()
+DEFINE_ALL_BUFFER_BUMP_SWEEPS()
 
 // ============================================================================
 // NEW: Fragmentation stress
@@ -556,18 +709,22 @@ UBENCH_F(libc_fixture, frag_stress) {
 
 UBENCH_F(buddy_fixture, frag_stress) {
   void *ptrs[FRAG_COUNT];
-  for (int i = 0; i < FRAG_COUNT; i++) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, global_frag_state.sizes[i]);
-    ubench_do_nothing(ptrs[i]);
+  for (int rep = 0; rep < BUDDY_FRAG_REPETITIONS; rep++) {
+    for (int i = 0; i < FRAG_COUNT; i++) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a, global_frag_state.sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < FRAG_COUNT; i += 2)
+      allo_free(&ubench_fixture->a, ptrs[i], global_frag_state.sizes[i]);
+    for (int i = 0; i < FRAG_COUNT; i += 2) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a, global_frag_state.sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < FRAG_COUNT; i++)
+      allo_free(&ubench_fixture->a, ptrs[i], global_frag_state.sizes[i]);
   }
-  for (int i = 0; i < FRAG_COUNT; i += 2)
-    allo_free(&ubench_fixture->a, ptrs[i], global_frag_state.sizes[i]);
-  for (int i = 0; i < FRAG_COUNT; i += 2) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, global_frag_state.sizes[i]);
-    ubench_do_nothing(ptrs[i]);
-  }
-  for (int i = 0; i < FRAG_COUNT; i++)
-    allo_free(&ubench_fixture->a, ptrs[i], global_frag_state.sizes[i]);
 }
 
 UBENCH_F(gen_fixture, frag_stress) {
@@ -597,55 +754,73 @@ UBENCH_F(gen_fixture, frag_stress) {
 
 UBENCH_F(libc_fixture, workload_sequential) {
   void *ptrs[RACE_COUNT];
-  for (int i = 0; i < RACE_COUNT; i++) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
-    ubench_do_nothing(ptrs[i]);
+  for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {
+    for (int i = 0; i < RACE_COUNT; i++) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < RACE_COUNT; i++)
+      allo_free(&ubench_fixture->a, ptrs[i], global_workload_sizes[i]);
   }
-  for (int i = 0; i < RACE_COUNT; i++)
-    allo_free(&ubench_fixture->a, ptrs[i], global_workload_sizes[i]);
 }
 
 UBENCH_F(buddy_fixture, workload_sequential) {
   void *ptrs[RACE_COUNT];
-  for (int i = 0; i < RACE_COUNT; i++) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
-    ubench_do_nothing(ptrs[i]);
+  for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {
+    for (int i = 0; i < RACE_COUNT; i++) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < RACE_COUNT; i++)
+      allo_free(&ubench_fixture->a, ptrs[i], global_workload_sizes[i]);
   }
-  for (int i = 0; i < RACE_COUNT; i++)
-    allo_free(&ubench_fixture->a, ptrs[i], global_workload_sizes[i]);
 }
 
 UBENCH_F(gen_fixture, workload_sequential) {
   void *ptrs[RACE_COUNT];
-  for (int i = 0; i < RACE_COUNT; i++) {
-    ptrs[i] = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
-    ubench_do_nothing(ptrs[i]);
+  for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {
+    for (int i = 0; i < RACE_COUNT; i++) {
+      ptrs[i] = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptrs[i]);
+      ubench_do_nothing(ptrs[i]);
+    }
+    for (int i = 0; i < RACE_COUNT; i++)
+      allo_free(&ubench_fixture->a, ptrs[i], global_workload_sizes[i]);
   }
-  for (int i = 0; i < RACE_COUNT; i++)
-    allo_free(&ubench_fixture->a, ptrs[i], global_workload_sizes[i]);
 }
 
 UBENCH_F(libc_fixture, workload_interleaved) {
-  for (int i = 0; i < RACE_COUNT; i++) {
-    void *ptr = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
-    ubench_do_nothing(ptr);
-    allo_free(&ubench_fixture->a, ptr, global_workload_sizes[i]);
+  for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {
+    for (int i = 0; i < RACE_COUNT; i++) {
+      void *ptr = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptr);
+      ubench_do_nothing(ptr);
+      allo_free(&ubench_fixture->a, ptr, global_workload_sizes[i]);
+    }
   }
 }
 
 UBENCH_F(buddy_fixture, workload_interleaved) {
-  for (int i = 0; i < RACE_COUNT; i++) {
-    void *ptr = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
-    ubench_do_nothing(ptr);
-    allo_free(&ubench_fixture->a, ptr, global_workload_sizes[i]);
+  for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {
+    for (int i = 0; i < RACE_COUNT; i++) {
+      void *ptr = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptr);
+      ubench_do_nothing(ptr);
+      allo_free(&ubench_fixture->a, ptr, global_workload_sizes[i]);
+    }
   }
 }
 
 UBENCH_F(gen_fixture, workload_interleaved) {
-  for (int i = 0; i < RACE_COUNT; i++) {
-    void *ptr = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
-    ubench_do_nothing(ptr);
-    allo_free(&ubench_fixture->a, ptr, global_workload_sizes[i]);
+  for (int rep = 0; rep < WORKLOAD_REPETITIONS; rep++) {
+    for (int i = 0; i < RACE_COUNT; i++) {
+      void *ptr = allo_alloc(&ubench_fixture->a, global_workload_sizes[i]);
+      BENCHMARK_CHECK_PTR(ptr);
+      ubench_do_nothing(ptr);
+      allo_free(&ubench_fixture->a, ptr, global_workload_sizes[i]);
+    }
   }
 }
 
@@ -742,15 +917,23 @@ UBENCH_F(buddy_fixture, realloc_zigzag) {
 
 #define BATCH_COUNT 256
 
-#define DEFINE_BATCH_BENCHMARK(FIXTURE, NAME, SIZE, FREE_ORDER)                \
+#define DEFINE_BATCH_BENCHMARK_WITH_COUNT(FIXTURE, NAME, SIZE, FREE_ORDER,     \
+                                         COUNT)                                \
   UBENCH_F(FIXTURE, batch_##NAME##_##FREE_ORDER) {                             \
-    void *ptrs[BATCH_COUNT];                                                   \
-    for (int i = 0; i < BATCH_COUNT; i++) {                                    \
-      ptrs[i] = allo_alloc(&ubench_fixture->a, SIZE);                          \
-      ubench_do_nothing(ptrs[i]);                                              \
+    void *ptrs[COUNT];                                                          \
+    for (int rep = 0; rep < BATCH_REPETITIONS; rep++) {                         \
+      for (int i = 0; i < (COUNT); i++) {                                      \
+        ptrs[i] = allo_alloc(&ubench_fixture->a, SIZE);                        \
+        BENCHMARK_CHECK_PTR(ptrs[i]);                                          \
+        ubench_do_nothing(ptrs[i]);                                            \
+      }                                                                        \
+      _batch_free_##FREE_ORDER(&ubench_fixture->a, ptrs, (COUNT), SIZE);        \
     }                                                                          \
-    _batch_free_##FREE_ORDER(&ubench_fixture->a, ptrs, BATCH_COUNT, SIZE);     \
   }
+
+#define DEFINE_BATCH_BENCHMARK(FIXTURE, NAME, SIZE, FREE_ORDER)                \
+  DEFINE_BATCH_BENCHMARK_WITH_COUNT(FIXTURE, NAME, SIZE, FREE_ORDER,           \
+                                    BATCH_COUNT)
 
 static inline void _batch_free_lifo(allo_t *a, void **ptrs, int n, size_t sz) {
   for (int i = n - 1; i >= 0; i--)
@@ -792,8 +975,8 @@ DEFINE_BATCH_BENCHMARK(libc_fixture, 1kb, 1024, lifo)
 DEFINE_BATCH_BENCHMARK(libc_fixture, 1kb, 1024, fifo)
 DEFINE_BATCH_BENCHMARK(buddy_fixture, 1kb, 1024, lifo)
 DEFINE_BATCH_BENCHMARK(buddy_fixture, 1kb, 1024, fifo)
-DEFINE_BATCH_BENCHMARK(gen_fixture, 1kb, 1024, lifo)
-DEFINE_BATCH_BENCHMARK(gen_fixture, 1kb, 1024, fifo)
+DEFINE_BATCH_BENCHMARK_WITH_COUNT(gen_fixture, 1kb, 1024, lifo, 64)
+DEFINE_BATCH_BENCHMARK_WITH_COUNT(gen_fixture, 1kb, 1024, fifo, 64)
 
 // ============================================================================
 // NEW: Pool-specific benchmarks
@@ -1001,9 +1184,11 @@ DEFINE_LIFECYCLE_BENCHMARK(fallback, {
 #define DEFINE_STRIDE_BENCHMARK(FIXTURE, NAME, SIZE, LIVE)                     \
   UBENCH_F(FIXTURE, stride_##NAME##_live##LIVE) {                              \
     void *ptrs[LIVE];                                                          \
-    for (int rep = 0; rep < REPEAT_COUNT / LIVE + 1; rep++) {                  \
+    for (int rep = 0; rep < STRIDE_REPETITIONS * (REPEAT_COUNT / LIVE + 1);   \
+         rep++) {                                                              \
       for (int i = 0; i < LIVE; i++) {                                         \
         ptrs[i] = allo_alloc(&ubench_fixture->a, SIZE);                        \
+        BENCHMARK_CHECK_PTR(ptrs[i]);                                          \
         ubench_do_nothing(ptrs[i]);                                            \
       }                                                                        \
       for (int i = 0; i < LIVE; i++)                                           \
