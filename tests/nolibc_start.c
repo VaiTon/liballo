@@ -26,6 +26,10 @@ void _start(void) {
                    "leaq 8(%%rsp), %1\n"
                    : "=r"(argc), "=r"(argv));
 
+  // Align the stack before calling C code; the kernel's initial stack does not
+  // have the call-site alignment expected by the compiler-generated prologue.
+  __asm__ volatile("andq $-16, %%rsp" ::: "memory");
+
   int ret = main((int)argc, argv);
   sys_syscall1(SYS_exit_group, ret);
 

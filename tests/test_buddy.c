@@ -50,7 +50,8 @@ void test_buddy_alignment(void) {
 
   for (int i = 0; i < 100; ++i) {
     void *p = allo_alloc(&buddy, 1);
-    assert(((uintptr_t)p % 8) == 0);
+    assert(p != NULL);
+    assert(((uintptr_t)p % _Alignof(max_align_t)) == 0);
     allo_free(&buddy, p, 1);
     if (i % 10 == 0)
       printf("alignment iter %d\n", i);
@@ -108,6 +109,30 @@ void test_buddy_torture(void) {
   printf("Buddy torture tests passed!\n");
 }
 
+void test_buddy_shrink_in_place(void) {
+  ALLO_ALIGNED_BUF(child_buffer, 1024);
+  allo_t child, buddy;
+  assert(make_fixed_buf_allocator(&child, child_buffer, sizeof(child_buffer)) ==
+         ALLO_OK);
+  assert(make_buddy_allocator(&buddy, &child, NULL, 64) == ALLO_OK);
+
+  unsigned char *p = allo_alloc(&buddy, 64);
+  assert(p != NULL);
+  memset(p, 0xA7, 64);
+  assert(allo_realloc(&buddy, p, 64, 32) == p);
+  for (size_t i = 0; i < 32; ++i)
+    assert(p[i] == 0xA7);
+
+  void *right = allo_alloc(&buddy, 32);
+  assert(right == p + 32);
+  allo_free(&buddy, right, 32);
+  allo_free(&buddy, p, 32);
+  assert(allo_alloc(&buddy, 64) == p);
+  allo_destroy(&buddy);
+  allo_destroy(&child);
+}
+
+
 void test_buddy_validation(void) {
   printf("Testing Buddy Allocator: Validation\n");
   static ALLO_ALIGNED_BUF(buffer, 1024);
@@ -121,6 +146,10 @@ void test_buddy_validation(void) {
 
   ALLO_ALIGNED_BUF(external, 1024);
   assert(make_buddy_allocator(&a, &child, external, 1000) == ALLO_ERR_INVAL);
+  if (_Alignof(max_align_t) > 8) {
+    assert(make_buddy_allocator(&a, &child, (char *)external + 8, 1024) ==
+           ALLO_ERR_INVAL);
+  }
 
 #ifndef ALLO_FREESTANDING
   allo_t c;
@@ -138,5 +167,6 @@ int main(void) {
   test_buddy_basic();
   test_buddy_alignment();
   test_buddy_torture();
+  test_buddy_shrink_in_place();
   return 0;
 }

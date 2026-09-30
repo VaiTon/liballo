@@ -40,7 +40,7 @@ typedef struct allo {
   void (*_free_mem)(struct allo *self, void *ptr, size_t size);
   void (*_destroy)(struct allo *self);
   allo_contains_t (*_contains)(struct allo *self, const void *ptr);
-  _Alignas(8) char _state[ALLO_MAX_ALLOCATOR_CTX_SIZE];
+  _Alignas(max_align_t) char _state[ALLO_MAX_ALLOCATOR_CTX_SIZE];
 } allo_t;
 
 /*
@@ -58,9 +58,9 @@ allo_error_t make_page_allocator(allo_t *out);
  * It cannot free individual allocations; memory is reclaimed when the buffer is
  * reset or destroyed.
  *
- * `out` must be 8-byte aligned. Use the ALLO_ALIGNED_BUF macro to create a
- * suitable buffer. Consider allocating on the heap with a page allocator if you
- * need a large buffer, as stack space is often limited.
+ * `buffer` must be aligned to `_Alignof(max_align_t)`. Use `ALLO_ALIGNED_BUF`
+ * to create a suitable buffer. Consider allocating on the heap with a page
+ * allocator if you need a large buffer, as stack space is often limited.
  */
 allo_error_t make_fixed_buf_allocator(allo_t *out, void *buffer, size_t size);
 
@@ -82,6 +82,7 @@ allo_error_t make_arena_allocator(allo_t *out, allo_t *child,
  * frequent allocations of objects of the same size.
  *
  * If buffer is NULL, it uses the child allocator to allocate the pool buffer.
+ * A caller-supplied buffer must be aligned to `_Alignof(max_align_t)`.
  */
 allo_error_t make_pool_allocator(allo_t *out, allo_t *child, void *buffer,
                                  size_t block_size, size_t total_blocks);
@@ -94,7 +95,7 @@ allo_error_t make_pool_allocator(allo_t *out, allo_t *child, void *buffer,
  * external fragmentation compared to simple free lists.
  *
  * If buffer is NULL, it uses the child allocator to allocate the internal
- * memory.
+ * memory. A caller-supplied buffer must be aligned to `_Alignof(max_align_t)`.
  */
 allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
                                   size_t size);
@@ -135,8 +136,8 @@ allo_error_t make_gen_allocator(allo_t *out);
 #endif
 
 /**
- * Allocates memory using the provided allocator.
- * If the allocation fails, it returns NULL.
+ * Allocates memory using the provided allocator. Successful allocations are
+ * aligned to `_Alignof(max_align_t)`. If allocation fails, it returns NULL.
  */
 static inline void *allo_alloc(allo_t *a, size_t size) {
   return a->_alloc(a, size);

@@ -24,6 +24,19 @@ typedef struct {
   uint8_t magic; // For data integrity verification
 } tracker_t;
 
+static size_t fuzz_size(uint16_t raw, size_t maximum, uint8_t selector) {
+  if (selector == 2 && raw == UINT16_MAX)
+    return SIZE_MAX - 7;
+  if (raw == UINT16_MAX - 1)
+    return maximum;
+  if (raw == UINT16_MAX - 2 && maximum >= 2048)
+    return 2048;
+  if (raw == UINT16_MAX - 3 && maximum >= 1024 * 1024)
+    return 1024 * 1024;
+  return raw % maximum;
+}
+
+
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   // Need at least enough bytes for global config (selector + max_ptrs +
   // max_alloc)
@@ -146,8 +159,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     if (op == OP_ALLOC) {
       if (offset + 2 > Size)
         break;
-      size_t alloc_size =
-          ((Data[offset] << 8) | Data[offset + 1]) % active_max_alloc;
+      size_t alloc_size = fuzz_size(
+          (uint16_t)((Data[offset] << 8) | Data[offset + 1]), active_max_alloc,
+          selector);
       offset += 2;
 
       // Verify integrity before overwriting
@@ -161,13 +175,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
         allo_free(&a, tracked[index].ptr, tracked[index].size);
       }
 
-      tracked[index].ptr = allo_alloc(&a, alloc_size);
-      tracked[index].size = alloc_size;
+      void *new_ptr = allo_alloc(&a, alloc_size);
+      tracked[index].ptr = new_ptr;
+      tracked[index].size = new_ptr ? alloc_size : 0;
       tracked[index].magic =
           op_byte; // Use op_byte as unique magic for this allocation
 
-      if (tracked[index].ptr && alloc_size > 0) {
-        memset(tracked[index].ptr, tracked[index].magic, alloc_size);
+      if (new_ptr && alloc_size > 0) {
+        memset(new_ptr, tracked[index].magic, alloc_size);
       }
     } else if (op == OP_FREE) {
       if (tracked[index].ptr) {
@@ -187,8 +202,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
     } else if (op == OP_REALLOC) {
       if (offset + 2 > Size)
         break;
-      size_t new_size =
-          ((Data[offset] << 8) | Data[offset + 1]) % active_max_alloc;
+      size_t new_size = fuzz_size(
+          (uint16_t)((Data[offset] << 8) | Data[offset + 1]),
+          active_max_alloc, selector);
       offset += 2;
 
       // Verify integrity before reallocating
@@ -205,6 +221,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
           allo_realloc(&a, tracked[index].ptr, tracked[index].size, new_size);
 
       if (new_ptr || new_size == 0) {
+        size_t preserved_size =
+            tracked[index].size < new_size ? tracked[index].size : new_size;
+        const uint8_t *resized = (const uint8_t *)new_ptr;
+        for (size_t i = 0; i < preserved_size; ++i) {
+          if (resized[i] != tracked[index].magic)
+            abort();
+        }
         tracked[index].ptr = new_ptr;
         tracked[index].size = new_size;
         tracked[index].magic = op_byte; // Update magic for new state

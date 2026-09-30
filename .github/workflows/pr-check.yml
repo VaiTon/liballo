@@ -8,7 +8,12 @@ on:
 
 jobs:
   build-and-test:
+    strategy:
+      matrix:
+        cc: [gcc, clang]
     runs-on: ubuntu-latest
+    env:
+      CC: ${{ matrix.cc }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
@@ -24,7 +29,7 @@ jobs:
           python3 -m pip install meson
 
       - name: Configure build
-        run: meson setup build --wipe --reconfigure -Db_sanitize=address,undefined -Dbuildtype=debug
+        run: meson setup build --wipe --reconfigure -Db_sanitize=address,undefined -Db_lundef=false -Dbuildtype=debug
 
       - name: Build
         run: ninja -C build -v
@@ -115,4 +120,5 @@ jobs:
           AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: 1
           AFL_SKIP_CPUFREQ: 1
         run: |
-          afl-fuzz -i fuzz_in -o fuzz_out -V 30 -- ./build-afl/tests/fuzz_allocator @@ || true
+          afl-fuzz -i fuzz_in -o fuzz_out -V 30 -- ./build-afl/tests/fuzz_allocator @@
+          test -z "$(find fuzz_out -type f -path '*/crashes/id:*' -print -quit)"

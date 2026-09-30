@@ -173,11 +173,11 @@ allo_error_t make_gen_allocator(allo_t *out) {
 
   s->page = page;
 
-  // Create buddy allocator backed by page allocator
   err = make_buddy_allocator(&s->buddy, &s->page, NULL, BUDDY_TOTAL_SIZE);
   if (err != ALLO_OK) {
-    allo_free(&s->page, s, sizeof(gen_state_t));
-    allo_destroy(&s->page);
+    page = s->page;
+    allo_free(&page, s, sizeof(gen_state_t));
+    allo_destroy(&page);
     return err;
   }
 
@@ -190,8 +190,9 @@ allo_error_t make_gen_allocator(allo_t *out) {
       for (int j = 0; j < i; j++)
         allo_destroy(&s->pools[j]);
       allo_destroy(&s->buddy);
-      allo_free(&s->page, s, sizeof(gen_state_t));
-      allo_destroy(&s->page);
+      page = s->page;
+      allo_free(&page, s, sizeof(gen_state_t));
+      allo_destroy(&page);
       return err;
     }
   }

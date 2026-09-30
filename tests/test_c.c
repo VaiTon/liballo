@@ -5,7 +5,7 @@ void test_c_allocator(void) {
   allo_t a;
   assert(make_c_allocator(&a) == ALLO_OK);
   void *p1 = allo_alloc(&a, 100);
-  assert(p1 != NULL);
+  assert(((uintptr_t)p1 % _Alignof(max_align_t)) == 0);
   memset(p1, 0xAA, 100);
   allo_free(&a, p1, 100);
   allo_destroy(&a);

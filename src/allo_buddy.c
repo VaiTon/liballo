@@ -17,7 +17,6 @@ typedef struct {
   int max_order;
   buddy_node_t **free_lists;
   uint8_t *bitset;
-  uint8_t *block_orders;
   int own_buffer;
   allo_t *child;
 } buddy_context_t;
@@ -150,9 +149,6 @@ void *buddy_alloc_fn(allo_t *self, size_t size) {
     clear_bit(ctx->bitset, node_index(level, index));
   }
 
-  // Record the level for this allocation
-  size_t block_idx = ((char *)node - (char *)ctx->buffer) / ctx->min_block_size;
-  ctx->block_orders[block_idx] = (uint8_t)target_level;
 
   ALLOC_UNPOISON(node, ctx->total_size >> target_level);
   return node;
@@ -233,7 +229,38 @@ void *buddy_realloc_fn(allo_t *self, void *ptr, size_t old_size,
     buddy_free_fn(self, ptr, old_size);
     return NULL;
   }
+  buddy_context_t *ctx = (buddy_context_t *)self->_state;
+  int min_order = get_order(ctx->min_block_size);
+  int old_order = get_order(old_size);
+  int new_order = get_order(new_size);
+  if (old_order < min_order)
+    old_order = min_order;
+  if (new_order < min_order)
+    new_order = min_order;
+  if (old_order == new_order)
+    return ptr;
 
+  if (new_order < old_order) {
+    int level = ctx->max_order - old_order;
+    size_t index =
+        ((char *)ptr - (char *)ctx->buffer) / (ctx->total_size >> level);
+    clear_bit(ctx->bitset, node_index(level, index));
+    while (old_order > new_order) {
+      level++;
+      index <<= 1;
+      size_t block_size = ctx->total_size >> level;
+      buddy_node_t *buddy =
+          (buddy_node_t *)((char *)ptr + block_size);
+      ALLOC_POISON(buddy, block_size);
+      ALLOC_UNPOISON(buddy, sizeof(buddy_node_t));
+      set_bit(ctx->bitset, node_index(level, index + 1));
+      clear_bit(ctx->bitset, node_index(level, index));
+      list_push(ctx, level, buddy);
+      old_order--;
+    }
+    ALLOC_UNPOISON(ptr, ctx->total_size >> (ctx->max_order - level));
+    return ptr;
+  }
   void *new_ptr = buddy_alloc_fn(self, new_size);
   if (!new_ptr)
     return NULL;
@@ -260,19 +287,16 @@ void buddy_destroy_fn(allo_t *self) {
     size_t bit_bytes = (max_nodes + 7) / 8;
     allo_free(ctx->child, ctx->bitset, bit_bytes);
   }
-  if (ctx->block_orders) {
-    size_t block_orders_len = ctx->total_size / ctx->min_block_size;
-    allo_free(ctx->child, ctx->block_orders, block_orders_len);
-  }
 }
 
 allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
                                   size_t size) {
-  if (!out || !child || size < 32) {
+  if (!out || !child ||
+      size < (ALLO_ALIGNMENT > 32 ? ALLO_ALIGNMENT : 32)) {
     return ALLO_ERR_INVAL;
   }
 
-  if (buffer && !ALLO_IS_ALIGNED(buffer, 8)) {
+  if (buffer && !ALLO_IS_ALIGNED(buffer, ALLO_ALIGNMENT)) {
     return ALLO_ERR_INVAL;
   }
 
@@ -296,7 +320,7 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
     return ALLO_ERR_INVAL;
   }
   ctx->total_size = actual_size;
-  ctx->min_block_size = 32;
+  ctx->min_block_size = ALLO_ALIGNMENT > 32 ? ALLO_ALIGNMENT : 32;
   ctx->max_order = get_order(ctx->total_size);
   ctx->own_buffer = (buffer == NULL);
 
@@ -321,7 +345,6 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
 
   size_t max_nodes = (ctx->total_size / ctx->min_block_size) * 2;
   size_t bit_bytes = (max_nodes + 7) / 8;
-  size_t block_orders_len = ctx->total_size / ctx->min_block_size;
 
   ctx->bitset = (uint8_t *)allo_calloc(ctx->child, bit_bytes, 1);
   if (!ctx->bitset) {
@@ -332,15 +355,6 @@ allo_error_t make_buddy_allocator(allo_t *out, allo_t *child, void *buffer,
     return ALLO_ERR_NOMEM;
   }
 
-  ctx->block_orders = (uint8_t *)allo_calloc(ctx->child, block_orders_len, 1);
-  if (!ctx->block_orders) {
-    allo_free(ctx->child, ctx->bitset, bit_bytes);
-    allo_free(ctx->child, (void *)ctx->free_lists,
-              free_lists_count * sizeof(buddy_node_t *));
-    if (ctx->own_buffer)
-      allo_free(ctx->child, ctx->buffer, ctx->total_size);
-    return ALLO_ERR_NOMEM;
-  }
 
   list_push(ctx, 0, (buddy_node_t *)ctx->buffer);
   set_bit(ctx->bitset, node_index(0, 0));

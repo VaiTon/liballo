@@ -88,7 +88,8 @@ void pool_destroy_fn(allo_t *self) {
 allo_error_t make_pool_allocator(allo_t *out, allo_t *child, void *buffer,
                                  size_t block_size, size_t total_blocks) {
   if (!out || (buffer == NULL && child == NULL) || block_size == 0 ||
-      total_blocks == 0)
+      total_blocks == 0 ||
+      (buffer && !ALLO_IS_ALIGNED(buffer, ALLO_ALIGNMENT)))
     return ALLO_ERR_INVAL;
 
   *out = (allo_t){._alloc = pool_alloc_fn,
@@ -101,8 +102,9 @@ allo_error_t make_pool_allocator(allo_t *out, allo_t *child, void *buffer,
   ctx->child = child;
   size_t min_size = sizeof(pool_free_node_t);
   size_t actual_block_size = block_size < min_size ? min_size : block_size;
-  // Ensure block_size is aligned to pointer size
-  if (!allo_align_up_checked(actual_block_size, 8, &ctx->block_size)) {
+  // Ensure each block preserves the allocator's alignment guarantee.
+  if (!allo_align_up_checked(actual_block_size, ALLO_ALIGNMENT,
+                             &ctx->block_size)) {
     return ALLO_ERR_INVAL;
   }
   ctx->total_blocks = total_blocks;

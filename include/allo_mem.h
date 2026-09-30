@@ -24,6 +24,8 @@ void *allo_memcpy(void *dest, const void *src, size_t n);
 void *allo_memset(void *s, int c, size_t n);
 #endif
 
+#define ALLO_ALIGNMENT _Alignof(max_align_t)
+
 inline static bool allo_size_add(size_t a, size_t b, size_t *out) {
   if (a > (size_t)-1 - b) {
     return false;

@@ -1,6 +1,13 @@
 #include "allo.h"
 #include "test_harness.h"
 
+#ifndef ALLO_FREESTANDING
+  #include <sys/resource.h>
+  #include <sys/wait.h>
+  #include <unistd.h>
+#endif
+
+
 void test_gen_basic(void) {
   printf("Testing General-Purpose Allocator: Basic\n");
   allo_t gen;
@@ -73,8 +80,36 @@ void test_gen_realloc_same_tier(void) {
   printf("Same-tier realloc tests passed!\n");
 }
 
+#ifndef ALLO_FREESTANDING
+void test_gen_init_failure(void) {
+  pid_t pid = fork();
+  assert(pid >= 0);
+  if (pid == 0) {
+    FILE *statm = fopen("/proc/self/statm", "r");
+    unsigned long virtual_pages;
+    if (!statm || fscanf(statm, "%lu", &virtual_pages) != 1)
+      _exit(2);
+    fclose(statm);
+    rlim_t limit = (rlim_t)virtual_pages * (rlim_t)sysconf(_SC_PAGESIZE) +
+                   8 * 1024 * 1024;
+    struct rlimit address_space_limit = {limit, limit};
+    if (setrlimit(RLIMIT_AS, &address_space_limit) != 0)
+      _exit(3);
+
+    allo_t gen;
+    _exit(make_gen_allocator(&gen) == ALLO_ERR_NOMEM ? 0 : 1);
+  }
+  int status;
+  assert(waitpid(pid, &status, 0) == pid);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+#endif
+
+
 int main(void) {
   test_gen_basic();
   test_gen_realloc_same_tier();
-  return 0;
+#ifndef ALLO_FREESTANDING
+  test_gen_init_failure();
+#endif
 }

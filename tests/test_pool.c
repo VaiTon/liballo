@@ -7,7 +7,7 @@ void test_pool_allocator(void) {
   assert(make_fixed_buf_allocator(&child, child_buf, 1024) == ALLO_OK);
   assert(make_pool_allocator(&pool, &child, NULL, 64, 10) == ALLO_OK);
   void *p1 = allo_alloc(&pool, 64);
-  assert(p1 != NULL);
+  assert(((uintptr_t)p1 % _Alignof(max_align_t)) == 0);
 
   void *p2 = allo_alloc(&pool, 64);
   assert(p2 != NULL);
@@ -63,6 +63,10 @@ void test_pool_validation(void) {
          ALLO_ERR_INVAL);
   assert(make_pool_allocator(&pool, &child, buffer, 64, SIZE_MAX) ==
          ALLO_ERR_INVAL);
+  if (_Alignof(max_align_t) > 8) {
+    assert(make_pool_allocator(&pool, &child, (char *)buffer + 8, 64, 1) ==
+           ALLO_ERR_INVAL);
+  }
 
   allo_destroy(&child);
   printf("Pool validation tests passed!\n");

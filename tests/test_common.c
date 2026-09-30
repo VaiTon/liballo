@@ -9,22 +9,24 @@ void test_alignment(void) {
   assert(make_arena_allocator(&a, &child, 1024) == ALLO_OK);
   void *p1 = allo_alloc(&a, 1);
   void *p2 = allo_alloc(&a, 1);
-  assert(((uintptr_t)p1 % 8) == 0);
-  assert(((uintptr_t)p2 % 8) == 0);
-  assert((char *)p2 >= (char *)p1 + 8);
+  assert(((uintptr_t)p1 % _Alignof(max_align_t)) == 0);
+  assert(((uintptr_t)p2 % _Alignof(max_align_t)) == 0);
+  assert((char *)p2 >= (char *)p1 + _Alignof(max_align_t));
 
   allo_destroy(&a);
 
   allo_t a2;
   char buffer[1024];
-  // Align buffer manually to be sure the starting point is aligned
-  void *aligned_buffer = (void *)(((uintptr_t)buffer + 7) & ~7);
+  // Align the external buffer to the allocator's public alignment guarantee.
+  void *aligned_buffer =
+      (void *)(((uintptr_t)buffer + _Alignof(max_align_t) - 1) &
+               ~((uintptr_t)_Alignof(max_align_t) - 1));
   assert(make_fixed_buf_allocator(&a2, aligned_buffer, 1024) == ALLO_OK);
   void *p1_b = allo_alloc(&a2, 1);
   void *p2_b = allo_alloc(&a2, 1);
-  assert(((uintptr_t)p1_b % 8) == 0);
-  assert(((uintptr_t)p2_b % 8) == 0);
-  assert((char *)p2_b >= (char *)p1_b + 8);
+  assert(((uintptr_t)p1_b % _Alignof(max_align_t)) == 0);
+  assert(((uintptr_t)p2_b % _Alignof(max_align_t)) == 0);
+  assert((char *)p2_b >= (char *)p1_b + _Alignof(max_align_t));
   allo_destroy(&a2);
 
   printf("Alignment test passed\n");

@@ -56,6 +56,30 @@ void test_buffer_realloc_inplace(void) {
   printf("Buffer in-place realloc test passed\n");
 }
 
+void test_buffer_realloc_overflow(void) {
+  ALLO_ALIGNED_BUF(buffer, 64);
+  allo_t a;
+  assert(make_fixed_buf_allocator(&a, buffer, sizeof(buffer)) == ALLO_OK);
+
+  unsigned char *first = allo_alloc(&a, 8);
+  unsigned char *last = allo_alloc(&a, 8);
+  assert(first != NULL && last != NULL);
+  memset(first, 0xA5, 8);
+  memset(last, 0x5A, 8);
+
+  assert(allo_realloc(&a, last, 8, SIZE_MAX - 7) == NULL);
+  for (size_t i = 0; i < 8; ++i) {
+    assert(first[i] == 0xA5);
+    assert(last[i] == 0x5A);
+  }
+
+  unsigned char *next = allo_alloc(&a, 8);
+  assert(next != NULL);
+  assert(next != first && next != last);
+  allo_destroy(&a);
+}
+
+
 int main(void) {
 #ifndef ALLO_FREESTANDING
   allo_t c;
@@ -89,6 +113,7 @@ int main(void) {
 #endif
 
   test_buffer_realloc_inplace();
+  test_buffer_realloc_overflow();
 
   return 0;
 }

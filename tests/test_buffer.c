@@ -19,6 +19,7 @@ void test_buffer_validation(void) {
 void test_buffer_allocator(void) {
   printf("Testing Fixed Buffer Allocator: Basic\n");
   ALLO_ALIGNED_BUF(buffer, 1024);
+  assert(((uintptr_t)buffer % _Alignof(max_align_t)) == 0);
   allo_t a;
   assert(make_fixed_buf_allocator(&a, buffer, 1024) == ALLO_OK);
 
@@ -29,8 +30,10 @@ void test_buffer_allocator(void) {
 
   void *p2 = allo_alloc(&a, 100);
   assert(p2 != NULL);
-  // 100 aligned up to 8 is 104
-  assert(p2 == (char *)p1 + 104);
+  // Each allocation starts at max_align_t alignment.
+  size_t stride =
+      (100 + _Alignof(max_align_t) - 1) & ~(_Alignof(max_align_t) - 1);
+  assert(p2 == (char *)p1 + stride);
 
   void *p3 = allo_alloc(&a, 1000); // Should fail
   assert(p3 == NULL);
@@ -39,15 +42,12 @@ void test_buffer_allocator(void) {
   printf("Fixed Buffer basic tests passed!\n");
 }
 
-static inline void *align_up(void *ptr, size_t align) {
-  return (void *)(((uintptr_t)ptr + align - 1) & ~(align - 1));
-}
 
 void test_buffer_boundary(void) {
   printf("Testing Fixed Buffer Allocator: Boundary\n");
   char buffer[128];
 
-  size_t offset = (-(uintptr_t)buffer) & 7;
+  size_t offset = (-(uintptr_t)buffer) & (_Alignof(max_align_t) - 1);
   void *aligned = (char *)buffer + offset;
 
   allo_t a;
@@ -61,9 +61,28 @@ void test_buffer_boundary(void) {
   printf("Fixed Buffer boundary tests passed!\n");
 }
 
+void test_buffer_alignment(void) {
+  ALLO_ALIGNED_BUF(buffer, 1024);
+  allo_t a;
+  assert(make_fixed_buf_allocator(&a, buffer, sizeof(buffer)) == ALLO_OK);
+  for (size_t size = 1; size <= 32; ++size) {
+    void *p = allo_alloc(&a, size);
+    assert(p != NULL);
+    assert(((uintptr_t)p % _Alignof(max_align_t)) == 0);
+  }
+  allo_destroy(&a);
+
+  if (_Alignof(max_align_t) > 8) {
+    void *misaligned = (char *)buffer + 8;
+    assert(make_fixed_buf_allocator(&a, misaligned, 64) == ALLO_ERR_INVAL);
+  }
+}
+
+
 int main(void) {
   test_buffer_validation();
   test_buffer_allocator();
   test_buffer_boundary();
+  test_buffer_alignment();
   return 0;
 }

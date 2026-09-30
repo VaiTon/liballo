@@ -18,6 +18,11 @@ typedef struct {
   allo_t *child;
 } arena_context_t;
 
+static size_t arena_payload_offset(void) {
+  return (sizeof(arena_block_t) + ALLO_ALIGNMENT - 1) &
+         ~(ALLO_ALIGNMENT - 1);
+}
+
 static_assert(sizeof(arena_context_t) <= ALLO_MAX_ALLOCATOR_CTX_SIZE,
               "Arena allocator context exceeds maximum size");
 
@@ -25,7 +30,7 @@ allo_contains_t arena_contains_fn(allo_t *self, const void *ptr) {
   arena_context_t *ctx = (arena_context_t *)self->_state;
 
   // Optimization: check current block first
-  char *block_start = (char *)ctx->current + sizeof(arena_block_t);
+  char *block_start = (char *)ctx->current + arena_payload_offset();
   char *block_end = block_start + ctx->current->size;
   if (ptr >= (void *)block_start && ptr < (void *)block_end) {
     return ALLO_CONTAINS_YES;
@@ -35,7 +40,7 @@ allo_contains_t arena_contains_fn(allo_t *self, const void *ptr) {
   arena_block_t *curr = ctx->first;
   while (curr) {
     if (curr != ctx->current) { // Already checked
-      block_start = (char *)curr + sizeof(arena_block_t);
+      block_start = (char *)curr + arena_payload_offset();
       block_end = block_start + curr->size;
       if (ptr >= (void *)block_start && ptr < (void *)block_end) {
         return ALLO_CONTAINS_YES;
@@ -48,7 +53,7 @@ allo_contains_t arena_contains_fn(allo_t *self, const void *ptr) {
 
 static arena_block_t *new_arena_block(allo_t *child, size_t size) {
   size_t allocation_size;
-  if (!allo_size_add(sizeof(arena_block_t), size, &allocation_size)) {
+  if (!allo_size_add(arena_payload_offset(), size, &allocation_size)) {
     return NULL;
   }
   arena_block_t *block = allo_alloc(child, allocation_size);
@@ -57,7 +62,7 @@ static arena_block_t *new_arena_block(allo_t *child, size_t size) {
   block->next = NULL;
   block->size = size;
   block->offset = 0;
-  ALLOC_POISON((char *)block + sizeof(arena_block_t), size);
+  ALLOC_POISON((char *)block + arena_payload_offset(), size);
   return block;
 }
 
@@ -68,7 +73,8 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
   arena_context_t *ctx = (arena_context_t *)self->_state;
 
   size_t aligned_offset;
-  if (!allo_align_up_checked(ctx->current->offset, 8, &aligned_offset)) {
+  if (!allo_align_up_checked(ctx->current->offset, ALLO_ALIGNMENT,
+                             &aligned_offset)) {
     return NULL;
   }
 
@@ -81,7 +87,7 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
     block->next = ctx->current->next;
     ctx->current->next = block;
     block->offset = size;
-    void *ptr = (char *)block + sizeof(arena_block_t);
+    void *ptr = (char *)block + arena_payload_offset();
     ALLOC_UNPOISON(ptr, size);
     return ptr;
   }
@@ -98,7 +104,8 @@ void *arena_alloc_fn(allo_t *self, size_t size) {
     aligned_offset = 0; // New block starts at offset 0
   }
 
-  void *ptr = (char *)ctx->current + sizeof(arena_block_t) + aligned_offset;
+  void *ptr =
+      (char *)ctx->current + arena_payload_offset() + aligned_offset;
   ctx->current->offset = aligned_offset + size;
   ALLOC_UNPOISON(ptr, size);
   return ptr;
@@ -110,7 +117,7 @@ void *arena_realloc_fn(allo_t *self, void *ptr, size_t old_size,
 
   // We can grow/shrink in-place only if:
   // 1. The pointer points to the very last allocation made in this block
-  void *block_start = (char *)ctx->current + sizeof(arena_block_t);
+  void *block_start = (char *)ctx->current + arena_payload_offset();
   void *last_alloc_end = (char *)block_start + ctx->current->offset;
   bool is_last_alloc = (char *)ptr + old_size == last_alloc_end;
 
@@ -165,7 +172,7 @@ void arena_destroy_fn(allo_t *self) {
   arena_block_t *curr = ctx->first;
   while (curr) {
     arena_block_t *next = curr->next;
-    allo_free(child, curr, sizeof(arena_block_t) + curr->size);
+    allo_free(child, curr, arena_payload_offset() + curr->size);
     curr = next;
   }
 }

@@ -24,8 +24,9 @@ void *buf_alloc_fn(allo_t *self, size_t size) {
   ALLO_ASSERT(ctx->offset <= ctx->size &&
               "Offset should never exceed buffer size");
 
-  size_t aligned_offset = allo_align_up(ctx->offset, 8);
-  if (aligned_offset > ctx->size || size > ctx->size - aligned_offset) {
+  size_t aligned_offset;
+  if (!allo_align_up_checked(ctx->offset, ALLO_ALIGNMENT, &aligned_offset) ||
+      aligned_offset > ctx->size || size > ctx->size - aligned_offset) {
     return NULL;
   }
 
@@ -48,12 +49,13 @@ void *buf_realloc_fn(allo_t *self, void *ptr, size_t old_size,
 
   // Optimization: if the pointer is the most recent allocation and there's
   // enough space to grow, just adjust the offset.
+  size_t base_offset = (size_t)((char *)ptr - (char *)ctx->buffer);
   bool is_last_alloc =
-      (char *)ptr + old_size == (char *)ctx->buffer + ctx->offset;
+      base_offset <= ctx->offset && old_size == ctx->offset - base_offset;
 
   if (is_last_alloc) {
-    size_t base_offset = (size_t)((char *)ptr - (char *)ctx->buffer);
-    bool fits_in_current = base_offset + new_size <= ctx->size;
+    bool fits_in_current = base_offset <= ctx->size &&
+                           new_size <= ctx->size - base_offset;
 
     if (fits_in_current) {
       ctx->offset = base_offset + new_size;
@@ -96,8 +98,8 @@ allo_error_t make_fixed_buf_allocator(allo_t *out, void *buffer, size_t size) {
   if (!out || !buffer || size == 0)
     return ALLO_ERR_INVAL;
 
-  /* Buffer must be 8-byte aligned for allocator alignment guarantees */
-  if (!ALLO_IS_ALIGNED(buffer, 8))
+  /* Buffer must satisfy the alignment guaranteed by every allocation. */
+  if (!ALLO_IS_ALIGNED(buffer, ALLO_ALIGNMENT))
     return ALLO_ERR_INVAL;
 
   *out = (allo_t){._alloc = buf_alloc_fn,
